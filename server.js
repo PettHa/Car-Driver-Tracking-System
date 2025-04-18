@@ -1,37 +1,257 @@
 // server.js - Node.js backend for Bilsjåfør Registrering
+// Med OWASP Top 10 sikkerhetstiltak implementert
+require('dotenv').config(); // npm install dotenv
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 const path = require('path');
+const helmet = require('helmet'); // npm install helmet
+const rateLimit = require('express-rate-limit'); // npm install express-rate-limit
+const { check, validationResult } = require('express-validator'); // npm install express-validator
+const sanitizeHtml = require('sanitize-html'); // npm install sanitize-html
+const winston = require('winston'); // npm install winston
+const fs = require('fs');
+const crypto = require('crypto');
 
 console.log('Starter server-applikasjon...');
 
+// Opprett logger
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json()
+  ),
+  defaultMeta: { service: 'bilregister-api' },
+  transports: [
+    // Feillogging til fil
+    new winston.transports.File({ 
+      filename: 'logs/error.log', 
+      level: 'error',
+      maxsize: 5242880, // 5MB
+      maxFiles: 5,
+    }),
+    // Kombinert logg
+    new winston.transports.File({ 
+      filename: 'logs/combined.log',
+      maxsize: 5242880, // 5MB
+      maxFiles: 10,
+    }),
+    // Sikkerhetshendelser
+    new winston.transports.File({ 
+      filename: 'logs/security.log', 
+      level: 'warn',
+      maxsize: 5242880, // 5MB
+      maxFiles: 10,
+    })
+  ]
+});
+
+// Legg til konsoll-logging i utviklingsmiljø
+if (process.env.NODE_ENV !== 'production') {
+  logger.add(new winston.transports.Console({
+    format: winston.format.simple()
+  }));
+}
+
+// Se til at logmappene eksisterer
+if (!fs.existsSync('logs')) {
+  fs.mkdirSync('logs');
+}
+
+// Initialisere Express
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
-console.log('Setter opp middleware...');
-app.use(cors());
-app.use(bodyParser.json());
-app.use(express.static(path.join(__dirname, 'client/build')));
-console.log('Middleware oppsett fullført');
+// Valider miljøvariabler ved oppstart
+const validateEnvVars = () => {
+  const requiredVars = [
+    'MONGO_USER', 
+    'MONGO_PASSWORD', 
+    'MONGO_HOST', 
+    'MONGO_PORT',
+    'MONGO_DB'
+  ];
+  
+  const missing = requiredVars.filter(varName => !process.env[varName]);
+  
+  if (missing.length > 0) {
+    logger.error(`Manglende påkrevde miljøvariabler: ${missing.join(', ')}`);
+    if (process.env.NODE_ENV === 'production') {
+      process.exit(1); // Stopp serveren i produksjon hvis nødvendige miljøvariabler mangler
+    }
+  }
+};
 
-// Connect to MongoDB (replace with your actual connection string)
-console.log('Prøver å koble til MongoDB...');
-mongoose.connect('mongodb://localhost:27017/bilregister', {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-})
-.then(() => console.log('MongoDB tilkoblet suksessfullt!'))
-.catch(err => console.log('MongoDB tilkoblingsfeil:', err));
+validateEnvVars();
+
+// Bygg opp sikker MongoDB connection string
+const mongoURI = process.env.NODE_ENV === 'production' 
+  ? `mongodb://${process.env.MONGO_USER}:${encodeURIComponent(process.env.MONGO_PASSWORD)}@${process.env.MONGO_HOST}:${process.env.MONGO_PORT}/${process.env.MONGO_DB}?authSource=admin&ssl=true`
+  : 'mongodb://localhost:27017/bilregister';
+
+// Middleware
+logger.info('Setter opp middleware...');
+
+// Sikkerhetshoder
+app.use(helmet());
+
+// Rate limiting for å forhindre brute force og DoS-angrep
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutter
+  max: 100, // maks 100 forespørsler per IP i denne tidsperioden
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'For mange forespørsler fra denne IP-adressen, prøv igjen senere'
+});
+
+// Begrenset CORS for API-et
+const corsOptions = {
+  origin: process.env.NODE_ENV === 'production' 
+    ? process.env.ALLOWED_ORIGIN || 'http://localhost:5000'
+    : '*',
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  allowedHeaders: ['Content-Type']
+};
+
+app.use(cors(corsOptions));
+app.use(bodyParser.json({ limit: '1mb' })); // Begrens størrelsen på JSON-data
+app.use(express.static(path.join(__dirname, 'client/build')));
+app.use('/api/', apiLimiter);
+
+// Logg alle API-forespørsler
+app.use((req, res, next) => {
+  // Logg start av forespørsel
+  logger.info({
+    message: `${req.method} ${req.url}`,
+    method: req.method,
+    url: req.originalUrl,
+    ip: req.ip,
+    query: req.query,
+    // Ikke logg fullstendige request bodies - kan inneholde sensitiv info
+    bodyKeys: req.body ? Object.keys(req.body) : []
+  });
+  
+  // Logg slutten av forespørselen
+  res.on('finish', () => {
+    // Logg HTTP-statuskoder 4xx og 5xx
+    if (res.statusCode >= 400) {
+      const logLevel = res.statusCode >= 500 ? 'error' : 'warn';
+      logger[logLevel]({
+        message: `${req.method} ${req.url} - ${res.statusCode}`,
+        method: req.method,
+        url: req.originalUrl,
+        status: res.statusCode,
+        responseTime: Date.now() - req._startTime,
+        ip: req.ip
+      });
+    }
+  });
+  
+  // Registrer starttidspunkt for å måle responstid
+  req._startTime = Date.now();
+  next();
+});
+
+logger.info('Middleware oppsett fullført');
+
+// Signering av data for integritetsbeskyttelse
+const signData = (data, secret = process.env.DATA_SIGNING_SECRET || 'default-signing-secret') => {
+  const hmac = crypto.createHmac('sha256', secret);
+  hmac.update(JSON.stringify(data));
+  return hmac.digest('hex');
+};
+
+// Verifisering av data
+const verifyData = (data, signature, secret = process.env.DATA_SIGNING_SECRET || 'default-signing-secret') => {
+  const expectedSignature = signData(data, secret);
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(signature, 'hex'),
+      Buffer.from(expectedSignature, 'hex')
+    );
+  } catch (err) {
+    logger.error('Error verifying data signature:', err);
+    return false;
+  }
+};
+
+// Connect to MongoDB with secure options
+logger.info('Prøver å koble til MongoDB...');
+const mongooseOptions = {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  // Tidsavbrudd for servervalg for å unngå at applikasjonen henger
+  serverSelectionTimeoutMS: 5000,
+  // Tidsavbrudd for socket-tilkoblinger
+  socketTimeoutMS: 45000
+};
+
+// Legg til SSL-opsjoner i produksjon
+if (process.env.NODE_ENV === 'production') {
+  // Sikker SSL/TLS konfigurasjon for MongoDB (hvis SSL er aktivert)
+  if (process.env.MONGO_SSL === 'true' && fs.existsSync(process.env.MONGO_CA_FILE)) {
+    mongooseOptions.tls = true;
+    mongooseOptions.tlsCAFile = process.env.MONGO_CA_FILE;
+    mongooseOptions.tlsAllowInvalidHostnames = false;
+    mongooseOptions.tlsAllowInvalidCertificates = false;
+  }
+}
+
+mongoose.connect(mongoURI, mongooseOptions)
+  .then(() => logger.info('MongoDB tilkoblet suksessfullt!'))
+  .catch(err => {
+    logger.error('MongoDB tilkoblingsfeil:', err);
+    if (process.env.NODE_ENV === 'production') {
+      process.exit(1); // Stopp serveren i produksjon hvis DB-tilkobling feiler
+    }
+  });
+
+// Databasehendelseslytting
+mongoose.connection.on('disconnected', () => {
+  logger.warn('MongoDB frakoblet');
+});
+
+mongoose.connection.on('reconnected', () => {
+  logger.info('MongoDB tilkoblet på nytt');
+});
+
+mongoose.connection.on('error', (err) => {
+  logger.error({
+    message: 'MongoDB feil',
+    error: err.message,
+    stack: err.stack
+  });
+});
 
 // Create Mongoose schemas and models
-console.log('Definerer database-skjemaer...');
+logger.info('Definerer database-skjemaer...');
 const carSchema = new mongoose.Schema({
     carNumber: { type: Number, required: true, unique: true },
-    registrationNumber: { type: String, required: true, unique: true },
-    phoneNumber: { type: String, required: true },
+    registrationNumber: { 
+      type: String, 
+      required: true, 
+      unique: true,
+      // Validér norsk registreringsnummer format
+      validate: {
+        validator: function(v) {
+          return /^[A-Z0-9 ]{2,8}$/.test(v);
+        },
+        message: props => `${props.value} er ikke et gyldig registreringsnummer!`
+      }
+    },
+    phoneNumber: { 
+      type: String, 
+      required: true,
+      // Validér telefonnummer
+      validate: {
+        validator: function(v) {
+          return /^[0-9+ ]{8,15}$/.test(v);
+        },
+        message: props => `${props.value} er ikke et gyldig telefonnummer!`
+      }
+    },
     driver: { type: String, default: '' },
     note: { type: String, default: '' },
     registrationTime: { type: Date, default: null },
@@ -56,39 +276,65 @@ const activityLogSchema = new mongoose.Schema({
     newDriver: { type: String, default: null },
     note: { type: String, default: '' },
     userId: { type: String, default: 'system' }, // Can be used to track which user made the change
-    timestamp: { type: Date, default: Date.now }
+    timestamp: { type: Date, default: Date.now },
+    // Nye felt for sikkerhetssporing
+    ipAddress: { type: String, default: '' },
+    userAgent: { type: String, default: '' }
 });
 
 const Car = mongoose.model('Car', carSchema);
 const ActivityLog = mongoose.model('ActivityLog', activityLogSchema);
-console.log('Database-modeller opprettet: Car og ActivityLog');
+logger.info('Database-modeller opprettet: Car og ActivityLog');
 
 // API Routes
 
 // Get all cars
 app.get('/api/cars', async (req, res) => {
-    console.log('GET /api/cars: Henter alle biler...');
+    logger.info('GET /api/cars: Henter alle biler...');
     try {
         const cars = await Car.find().sort({ carNumber: 1 });
-        console.log(`GET /api/cars: Fant ${cars.length} biler`);
+        logger.info(`GET /api/cars: Fant ${cars.length} biler`);
         res.json(cars);
     } catch (err) {
-        console.error('GET /api/cars FEIL:', err);
+        logger.error('GET /api/cars FEIL:', err);
         res.status(500).json({ message: 'Server error' });
     }
 });
 
 // Get activity logs
-app.get('/api/activity-logs', async (req, res) => {
-    console.log('GET /api/activity-logs: Henter aktivitetslogger med parametre:', req.query);
+app.get('/api/activity-logs', [
+  check('carId').optional().isMongoId().withMessage('Ugyldig bil-ID format'),
+  check('startDate').optional().isISO8601().withMessage('Ugyldig startdato format'),
+  check('endDate').optional().isISO8601().withMessage('Ugyldig sluttdato format'),
+  check('limit').optional().isInt({ min: 1, max: 1000 }).withMessage('Limit må være mellom 1 og 1000'),
+  check('action').optional().isIn([
+    'driver_assigned', 'driver_removed', 'maintenance_set', 
+    'maintenance_cleared', 'car_added', 'car_updated', 'car_deleted'
+  ]).withMessage('Ugyldig handlingstype')
+], async (req, res) => {
+    logger.info('GET /api/activity-logs: Henter aktivitetslogger med parametre:', req.query);
+    
+    // Valider input
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      logger.warn('Ugyldig input for aktivitetslogger:', errors.array());
+      return res.status(400).json({ errors: errors.array() });
+    }
+    
     try {
         const { carId, startDate, endDate, limit = 100, action } = req.query;
         
         const query = {};
         
         if (carId) {
+            // Valider MongoDB ObjectId format
+            if (!mongoose.Types.ObjectId.isValid(carId)) {
+              logger.warn(`Ugyldig carId format: ${carId}`);
+              return res.status(400).json({ message: 'Ugyldig bil-ID format' });
+            }
+            
             query.carId = carId;
-            console.log(`Filtrerer på bilID: ${carId}`);
+            logger.info(`Filtrerer på bilID: ${carId}`);
         }
         
         if (startDate && endDate) {
@@ -96,64 +342,109 @@ app.get('/api/activity-logs', async (req, res) => {
                 $gte: new Date(startDate),
                 $lte: new Date(endDate)
             };
-            console.log(`Filtrerer på tidsperiode: ${startDate} til ${endDate}`);
+            logger.info(`Filtrerer på tidsperiode: ${startDate} til ${endDate}`);
         } else if (startDate) {
             query.timestamp = { $gte: new Date(startDate) };
-            console.log(`Filtrerer på tid fra: ${startDate}`);
+            logger.info(`Filtrerer på tid fra: ${startDate}`);
         } else if (endDate) {
             query.timestamp = { $lte: new Date(endDate) };
-            console.log(`Filtrerer på tid til: ${endDate}`);
+            logger.info(`Filtrerer på tid til: ${endDate}`);
         }
         
         if (action) {
             query.action = action;
-            console.log(`Filtrerer på action: ${action}`);
+            logger.info(`Filtrerer på action: ${action}`);
         }
         
-        console.log('Endelig spørring:', JSON.stringify(query));
+        logger.info('Endelig spørring:', JSON.stringify(query));
         
         const logs = await ActivityLog.find(query)
             .sort({ timestamp: -1 })
             .limit(parseInt(limit))
             .exec();
             
-        console.log(`Fant ${logs.length} logginnslag`);
+        logger.info(`Fant ${logs.length} logginnslag`);
         res.json(logs);
     } catch (err) {
-        console.error('GET /api/activity-logs FEIL:', err);
+        logger.error('GET /api/activity-logs FEIL:', err);
         res.status(500).json({ message: 'Server error' });
     }
 });
 
 // Get single car
 app.get('/api/cars/:id', async (req, res) => {
-    console.log(`GET /api/cars/${req.params.id}: Henter spesifikk bil...`);
+    logger.info(`GET /api/cars/${req.params.id}: Henter spesifikk bil...`);
     try {
+        // Valider MongoDB ObjectId format
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+          logger.warn(`Ugyldig bil-ID format: ${req.params.id}`);
+          return res.status(400).json({ message: 'Ugyldig ID-format' });
+        }
+        
         const car = await Car.findById(req.params.id);
         if (!car) {
-            console.log(`GET /api/cars/${req.params.id}: Bil ikke funnet`);
+            logger.info(`GET /api/cars/${req.params.id}: Bil ikke funnet`);
             return res.status(404).json({ message: 'Car not found' });
         }
-        console.log(`GET /api/cars/${req.params.id}: Bil funnet:`, car.registrationNumber);
+        logger.info(`GET /api/cars/${req.params.id}: Bil funnet:`, car.registrationNumber);
         res.json(car);
     } catch (err) {
-        console.error(`GET /api/cars/${req.params.id} FEIL:`, err);
+        logger.error(`GET /api/cars/${req.params.id} FEIL:`, err);
         res.status(500).json({ message: 'Server error' });
     }
 });
 
 // Create new car
-app.post('/api/cars', async (req, res) => {
-    console.log('POST /api/cars: Oppretter ny bil med data:', JSON.stringify(req.body));
+app.post('/api/cars', [
+  check('carNumber', 'Bilnummer må være et heltall').isInt(),
+  check('registrationNumber', 'Registreringsnummer er påkrevd').notEmpty().matches(/^[A-Z0-9 ]{2,8}$/),
+  check('phoneNumber', 'Gyldig telefonnummer er påkrevd').matches(/^[0-9+ ]{8,15}$/),
+  check('driver').optional().trim().escape(),
+  check('note').optional().trim().escape(),
+  check('status').optional().isIn(['available', 'inuse', 'maintenance'])
+], async (req, res) => {
+    logger.info('POST /api/cars: Oppretter ny bil med data:', JSON.stringify(req.body));
+    
+    // Valider input
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      logger.warn('Ugyldig input for ny bil:', errors.array());
+      return res.status(400).json({ errors: errors.array() });
+    }
+    
+    // Start en database-sesjon for transaksjoner
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    
     try {
-        const { userId, ...carData } = req.body;
+        let { userId, driver, note, ...carData } = req.body;
+        
+        // Sanitér input for å forhindre XSS
+        if (driver) {
+          driver = sanitizeHtml(driver, {
+            allowedTags: [],
+            allowedAttributes: {}
+          });
+        }
+        
+        if (note) {
+          note = sanitizeHtml(note, {
+            allowedTags: [],
+            allowedAttributes: {}
+          });
+        }
+        
+        // Sett tilbake saniterte verdier
+        carData.driver = driver || '';
+        carData.note = note || '';
+        
         const newCar = new Car(carData);
-        console.log('Lagrer ny bil...');
-        const savedCar = await newCar.save();
-        console.log(`Bil lagret med ID: ${savedCar._id}`);
+        logger.info('Lagrer ny bil...');
+        const savedCar = await newCar.save({ session });
+        logger.info(`Bil lagret med ID: ${savedCar._id}`);
         
         // Create activity log entry
-        console.log('Oppretter aktivitetslogg for ny bil...');
+        logger.info('Oppretter aktivitetslogg for ny bil...');
         const activityLog = new ActivityLog({
             action: 'car_added',
             carId: savedCar._id,
@@ -162,17 +453,27 @@ app.post('/api/cars', async (req, res) => {
             previousDriver: null,
             newDriver: savedCar.driver || null,
             note: savedCar.note || '',
-            userId: userId || 'system'
+            userId: userId || 'system',
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'] || ''
         });
         
-        await activityLog.save();
-        console.log('Aktivitetslogg lagret');
+        await activityLog.save({ session });
+        logger.info('Aktivitetslogg lagret');
+        
+        // Commit transaksjonen
+        await session.commitTransaction();
+        session.endSession();
         
         res.status(201).json(savedCar);
     } catch (err) {
-        console.error('POST /api/cars FEIL:', err);
+        // Noe gikk galt, rull tilbake hele transaksjonen
+        await session.abortTransaction();
+        session.endSession();
+        
+        logger.error('POST /api/cars FEIL:', err);
         if (err.code === 11000) {
-            console.log('Duplikat bilnummer eller registreringsnummer');
+            logger.warn('Duplikat bilnummer eller registreringsnummer');
             return res.status(400).json({ message: 'Car number or registration number already exists' });
         }
         res.status(500).json({ message: 'Server error' });
@@ -180,37 +481,100 @@ app.post('/api/cars', async (req, res) => {
 });
 
 // Update car
-app.put('/api/cars/:id', async (req, res) => {
-    console.log(`PUT /api/cars/${req.params.id}: Oppdaterer bil med data:`, JSON.stringify(req.body));
+app.put('/api/cars/:id', [
+  check('carNumber', 'Bilnummer må være et heltall').isInt(),
+  check('registrationNumber', 'Registreringsnummer er påkrevd').notEmpty().matches(/^[A-Z0-9 ]{2,8}$/),
+  check('phoneNumber', 'Gyldig telefonnummer er påkrevd').matches(/^[0-9+ ]{8,15}$/),
+  check('driver').optional().trim().escape(),
+  check('note').optional().trim().escape(),
+  check('status').optional().isIn(['available', 'inuse', 'maintenance'])
+], async (req, res) => {
+    logger.info(`PUT /api/cars/${req.params.id}: Oppdaterer bil med data:`, JSON.stringify(req.body));
+    
+    // Valider input
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      logger.warn('Ugyldig input for biloppdatering:', errors.array());
+      return res.status(400).json({ errors: errors.array() });
+    }
+    
+    // Valider MongoDB ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      logger.warn(`Ugyldig bil-ID format: ${req.params.id}`);
+      return res.status(400).json({ message: 'Ugyldig ID-format' });
+    }
+    
+    // Start en database-sesjon for transaksjoner
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    
     try {
-        const { userId, ...updateData } = req.body;
+        let { userId, signature, timestamp, driver, note, ...updateData } = req.body;
+        
+        // Sanitér input for å forhindre XSS
+        if (driver) {
+          driver = sanitizeHtml(driver, {
+            allowedTags: [],
+            allowedAttributes: {}
+          });
+          updateData.driver = driver;
+        }
+        
+        if (note) {
+          note = sanitizeHtml(note, {
+            allowedTags: [],
+            allowedAttributes: {}
+          });
+          updateData.note = note;
+        }
+        
+        // Sjekk signatur om den er gitt (for å verifisere data-integritet)
+        if (signature && timestamp) {
+          // Sjekk om data er eldre enn tillatt (hindrer replay-angrep)
+          const maxAgeMs = 5 * 60 * 1000; // 5 minutter
+          if (Date.now() - timestamp > maxAgeMs) {
+            logger.warn('Forespørsel utgått for bil-oppdatering', { id: req.params.id });
+            return res.status(400).json({ message: 'Forespørselen er utgått' });
+          }
+          
+          const dataToVerify = { 
+            id: req.params.id, 
+            ...updateData, 
+            timestamp 
+          };
+          
+          if (!verifyData(dataToVerify, signature)) {
+            logger.warn('Ugyldig datasignatur for bil-oppdatering', { id: req.params.id });
+            return res.status(403).json({ message: 'Ugyldig datasignatur' });
+          }
+        }
         
         // Find the car before updating to get previous state
-        console.log('Henter eksisterende bil...');
+        logger.info('Henter eksisterende bil...');
         const existingCar = await Car.findById(req.params.id);
         if (!existingCar) {
-            console.log(`Bil med ID ${req.params.id} ikke funnet`);
+            logger.warn(`Bil med ID ${req.params.id} ikke funnet`);
             return res.status(404).json({ message: 'Car not found' });
         }
-        console.log('Eksisterende bil funnet:', {
+        logger.info('Eksisterende bil funnet:', {
             carNumber: existingCar.carNumber,
             registrationNumber: existingCar.registrationNumber
         });
         
-        console.log('Oppdaterer bil...');
+        logger.info('Oppdaterer bil...');
         const updatedCar = await Car.findByIdAndUpdate(
             req.params.id, 
             updateData,
-            { new: true, runValidators: true }
+            { new: true, runValidators: true, session }
         );
         
-        console.log('Bil oppdatert:', {
+        logger.info('Bil oppdatert:', {
             carNumber: updatedCar.carNumber,
             registrationNumber: updatedCar.registrationNumber
         });
         
         // Create activity log entry
-        console.log('Oppretter aktivitetslogg for biloppdatering...');
+        logger.info('Oppretter aktivitetslogg for biloppdatering...');
         const activityLog = new ActivityLog({
             action: 'car_updated',
             carId: updatedCar._id,
@@ -219,35 +583,78 @@ app.put('/api/cars/:id', async (req, res) => {
             previousDriver: existingCar.driver,
             newDriver: updatedCar.driver,
             note: `Bilnr endret fra ${existingCar.carNumber} til ${updatedCar.carNumber}, Regnr endret fra ${existingCar.registrationNumber} til ${updatedCar.registrationNumber}`,
-            userId: userId || 'system'
+            userId: userId || 'system',
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'] || ''
         });
         
-        await activityLog.save();
-        console.log('Aktivitetslogg lagret');
+        await activityLog.save({ session });
+        logger.info('Aktivitetslogg lagret');
+        
+        // Commit transaksjonen
+        await session.commitTransaction();
+        session.endSession();
         
         res.json(updatedCar);
     } catch (err) {
-        console.error(`PUT /api/cars/${req.params.id} FEIL:`, err);
+        // Noe gikk galt, rull tilbake hele transaksjonen
+        await session.abortTransaction();
+        session.endSession();
+        
+        logger.error(`PUT /api/cars/${req.params.id} FEIL:`, err);
         res.status(500).json({ message: 'Server error' });
     }
 });
 
 // Update car driver status
-app.patch('/api/cars/:id/driver', async (req, res) => {
-    console.log(`PATCH /api/cars/${req.params.id}/driver: Oppdaterer sjåførstatus med data:`, JSON.stringify(req.body));
+app.patch('/api/cars/:id/driver', [
+  check('driver').optional().trim().escape(),
+  check('note').optional().trim().escape()
+], async (req, res) => {
+    logger.info(`PATCH /api/cars/${req.params.id}/driver: Oppdaterer sjåførstatus med data:`, JSON.stringify(req.body));
+    
+    // Valider input
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      logger.warn('Ugyldig input for sjåførstatus:', errors.array());
+      return res.status(400).json({ errors: errors.array() });
+    }
+    
+    // Valider MongoDB ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      logger.warn(`Ugyldig bil-ID format: ${req.params.id}`);
+      return res.status(400).json({ message: 'Ugyldig ID-format' });
+    }
+    
     try {
-        const { driver, note, userId } = req.body;
+        let { driver, note, userId } = req.body;
+        
+        // Sanitér input for å forhindre XSS
+        if (driver) {
+          driver = sanitizeHtml(driver, {
+            allowedTags: [],
+            allowedAttributes: {}
+          });
+        }
+        
+        if (note) {
+          note = sanitizeHtml(note, {
+            allowedTags: [],
+            allowedAttributes: {}
+          });
+        }
+        
         let update = { driver, note };
         
         // Find the car before updating to get previous state
-        console.log('Henter eksisterende bil...');
+        logger.info('Henter eksisterende bil...');
         const existingCar = await Car.findById(req.params.id);
         if (!existingCar) {
-            console.log(`Bil med ID ${req.params.id} ikke funnet`);
+            logger.warn(`Bil med ID ${req.params.id} ikke funnet`);
             return res.status(404).json({ message: 'Car not found' });
         }
         
-        console.log('Eksisterende bil funnet:', {
+        logger.info('Eksisterende bil funnet:', {
             carNumber: existingCar.carNumber,
             registrationNumber: existingCar.registrationNumber,
             currentDriver: existingCar.driver,
@@ -258,20 +665,20 @@ app.patch('/api/cars/:id/driver', async (req, res) => {
         if (driver && driver.trim() !== '') {
             update.status = 'inuse';
             update.registrationTime = new Date();
-            console.log('Oppdaterer status til "inuse" med sjåfør:', driver);
+            logger.info('Oppdaterer status til "inuse" med sjåfør:', driver);
         } else if (note && (note.toLowerCase().includes('vedlikehold') || note.toLowerCase().includes('ødelagt'))) {
             // If note includes maintenance keywords, set status to 'maintenance'
             update.status = 'maintenance';
             update.registrationTime = null;
-            console.log('Oppdaterer status til "maintenance" basert på notat');
+            logger.info('Oppdaterer status til "maintenance" basert på notat');
         } else {
             // Otherwise, set to available
             update.status = 'available';
             update.registrationTime = null;
-            console.log('Oppdaterer status til "available"');
+            logger.info('Oppdaterer status til "available"');
         }
         
-        console.log('Oppdaterer bil med:', update);
+        logger.info('Oppdaterer bil med:', update);
         const updatedCar = await Car.findByIdAndUpdate(
             req.params.id, 
             update,
@@ -283,26 +690,26 @@ app.patch('/api/cars/:id/driver', async (req, res) => {
         if (existingCar.status !== updatedCar.status) {
             if (updatedCar.status === 'inuse') {
                 action = 'driver_assigned';
-                console.log('Aktivitet: Sjåfør tildelt');
+                logger.info('Aktivitet: Sjåfør tildelt');
             } else if (updatedCar.status === 'available' && existingCar.status === 'inuse') {
                 action = 'driver_removed';
-                console.log('Aktivitet: Sjåfør fjernet');
+                logger.info('Aktivitet: Sjåfør fjernet');
             } else if (updatedCar.status === 'maintenance') {
                 action = 'maintenance_set';
-                console.log('Aktivitet: Satt til vedlikehold');
+                logger.info('Aktivitet: Satt til vedlikehold');
             } else if (existingCar.status === 'maintenance') {
                 action = 'maintenance_cleared';
-                console.log('Aktivitet: Fjernet fra vedlikehold');
+                logger.info('Aktivitet: Fjernet fra vedlikehold');
             }
         } else if (existingCar.driver !== updatedCar.driver) {
             action = updatedCar.driver ? 'driver_assigned' : 'driver_removed';
-            console.log(`Aktivitet: ${updatedCar.driver ? 'Sjåfør tildelt' : 'Sjåfør fjernet'}`);
+            logger.info(`Aktivitet: ${updatedCar.driver ? 'Sjåfør tildelt' : 'Sjåfør fjernet'}`);
         } else {
             action = 'car_updated';
-            console.log('Aktivitet: Bil oppdatert');
+            logger.info('Aktivitet: Bil oppdatert');
         }
         
-        console.log('Oppretter aktivitetslogg...');
+        logger.info('Oppretter aktivitetslogg...');
         const activityLog = new ActivityLog({
             action,
             carId: updatedCar._id,
@@ -311,40 +718,66 @@ app.patch('/api/cars/:id/driver', async (req, res) => {
             previousDriver: existingCar.driver,
             newDriver: updatedCar.driver,
             note: updatedCar.note,
-            userId: userId || 'system'
+            userId: userId || 'system',
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'] || ''
         });
         
         await activityLog.save();
-        console.log('Aktivitetslogg lagret');
+        logger.info('Aktivitetslogg lagret');
         
         res.json(updatedCar);
     } catch (err) {
-        console.error(`PATCH /api/cars/${req.params.id}/driver FEIL:`, err);
+        logger.error(`PATCH /api/cars/${req.params.id}/driver FEIL:`, err);
         res.status(500).json({ message: 'Server error' });
     }
 });
 
 // Set car to maintenance
-app.patch('/api/cars/:id/maintenance', async (req, res) => {
-    console.log(`PATCH /api/cars/${req.params.id}/maintenance: Setter bil til vedlikehold med data:`, JSON.stringify(req.body));
+app.patch('/api/cars/:id/maintenance', [
+  check('note').optional().trim().escape()
+], async (req, res) => {
+    logger.info(`PATCH /api/cars/${req.params.id}/maintenance: Setter bil til vedlikehold med data:`, JSON.stringify(req.body));
+    
+    // Valider input
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      logger.warn('Ugyldig input for vedlikeholdsstatus:', errors.array());
+      return res.status(400).json({ errors: errors.array() });
+    }
+    
+    // Valider MongoDB ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      logger.warn(`Ugyldig bil-ID format: ${req.params.id}`);
+      return res.status(400).json({ message: 'Ugyldig ID-format' });
+    }
+    
     try {
-        const { note, userId } = req.body;
+        let { note, userId } = req.body;
+        
+        // Sanitér input for å forhindre XSS
+        if (note) {
+          note = sanitizeHtml(note, {
+            allowedTags: [],
+            allowedAttributes: {}
+          });
+        }
         
         // Find the car before updating to get previous state
-        console.log('Henter eksisterende bil...');
+        logger.info('Henter eksisterende bil...');
         const existingCar = await Car.findById(req.params.id);
         if (!existingCar) {
-            console.log(`Bil med ID ${req.params.id} ikke funnet`);
+            logger.warn(`Bil med ID ${req.params.id} ikke funnet`);
             return res.status(404).json({ message: 'Car not found' });
         }
         
-        console.log('Eksisterende bil funnet:', {
+        logger.info('Eksisterende bil funnet:', {
             carNumber: existingCar.carNumber,
             registrationNumber: existingCar.registrationNumber,
             currentStatus: existingCar.status
         });
         
-        console.log('Oppdaterer til vedlikeholdsstatus...');
+        logger.info('Oppdaterer til vedlikeholdsstatus...');
         const updatedCar = await Car.findByIdAndUpdate(
             req.params.id,
             {
@@ -357,7 +790,7 @@ app.patch('/api/cars/:id/maintenance', async (req, res) => {
         );
         
         // Create activity log entry
-        console.log('Oppretter aktivitetslogg for vedlikehold...');
+        logger.info('Oppretter aktivitetslogg for vedlikehold...');
         const activityLog = new ActivityLog({
             action: 'maintenance_set',
             carId: updatedCar._id,
@@ -366,45 +799,61 @@ app.patch('/api/cars/:id/maintenance', async (req, res) => {
             previousDriver: existingCar.driver,
             newDriver: '',
             note: note,
-            userId: userId || 'system'
+            userId: userId || 'system',
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'] || ''
         });
         
         await activityLog.save();
-        console.log('Aktivitetslogg lagret');
+        logger.info('Aktivitetslogg lagret');
         
         res.json(updatedCar);
     } catch (err) {
-        console.error(`PATCH /api/cars/${req.params.id}/maintenance FEIL:`, err);
+        logger.error(`PATCH /api/cars/${req.params.id}/maintenance FEIL:`, err);
         res.status(500).json({ message: 'Server error' });
     }
 });
 
 // End all trips - set all cars to available
 app.patch('/api/cars/end-all-trips', async (req, res) => {
-    console.log('PATCH /api/cars/end-all-trips: Avslutter alle turer...');
+    logger.info('PATCH /api/cars/end-all-trips: Avslutter alle turer...');
+    
+    // Start en database-sesjon for transaksjoner
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    
     try {
         const { userId } = req.body;
         
         // Find all cars currently in use before updating
-        console.log('Henter alle biler i bruk...');
+        logger.info('Henter alle biler i bruk...');
         const carsInUse = await Car.find({ status: 'inuse' });
-        console.log(`Fant ${carsInUse.length} biler i bruk`);
+        logger.info(`Fant ${carsInUse.length} biler i bruk`);
         
-        console.log('Oppdaterer alle biler i bruk til tilgjengelig...');
+        // Logg hvis det er en stor operasjon (mange biler påvirket)
+        if (carsInUse.length > 10) {
+          logger.warn({
+            message: `Stor database-operasjon: end-all-trips`,
+            count: carsInUse.length
+          });
+        }
+        
+        logger.info('Oppdaterer alle biler i bruk til tilgjengelig...');
         const result = await Car.updateMany(
             { status: 'inuse' },
             { 
                 status: 'available', 
                 driver: '', 
                 registrationTime: null 
-            }
+            },
+            { session }
         );
         
-        console.log(`Oppdatert ${result.nModified || result.modifiedCount} biler`);
+        logger.info(`Oppdatert ${result.nModified || result.modifiedCount} biler`);
         
         // Create activity log entries for each car
         if (carsInUse.length > 0) {
-            console.log('Oppretter aktivitetslogger for alle avsluttede turer...');
+            logger.info('Oppretter aktivitetslogger for alle avsluttede turer...');
             const activityLogs = carsInUse.map(car => ({
                 action: 'driver_removed',
                 carId: car._id,
@@ -413,34 +862,66 @@ app.patch('/api/cars/end-all-trips', async (req, res) => {
                 previousDriver: car.driver,
                 newDriver: '',
                 note: 'Masseavslutning av turer',
-                userId: userId || 'system'
+                userId: userId || 'system',
+                ipAddress: req.ip,
+                userAgent: req.headers['user-agent'] || ''
             }));
             
-            await ActivityLog.insertMany(activityLogs);
-            console.log(`${activityLogs.length} aktivitetslogger lagret`);
+            await ActivityLog.insertMany(activityLogs, { session });
+            logger.info(`${activityLogs.length} aktivitetslogger lagret`);
         }
+        
+        // Commit transaksjonen
+        await session.commitTransaction();
+        session.endSession();
         
         res.json({ 
             message: 'All trips ended successfully',
             carsUpdated: result.nModified || result.modifiedCount // handle different MongoDB driver versions
         });
     } catch (err) {
-        console.error('PATCH /api/cars/end-all-trips FEIL:', err);
+        // Noe gikk galt, rull tilbake hele transaksjonen
+        await session.abortTransaction();
+        session.endSession();
+        
+        logger.error('PATCH /api/cars/end-all-trips FEIL:', err);
         res.status(500).json({ message: 'Server error' });
     }
 });
 
 // Export activity logs as CSV
-app.get('/api/activity-logs/export', async (req, res) => {
-    console.log('GET /api/activity-logs/export: Eksporterer aktivitetslogger til CSV...');
+app.get('/api/activity-logs/export', [
+  check('carId').optional().isMongoId().withMessage('Ugyldig bil-ID format'),
+  check('startDate').optional().isISO8601().withMessage('Ugyldig startdato format'),
+  check('endDate').optional().isISO8601().withMessage('Ugyldig sluttdato format'),
+  check('action').optional().isIn([
+    'driver_assigned', 'driver_removed', 'maintenance_set', 
+    'maintenance_cleared', 'car_added', 'car_updated', 'car_deleted'
+  ]).withMessage('Ugyldig handlingstype')
+], async (req, res) => {
+    logger.info('GET /api/activity-logs/export: Eksporterer aktivitetslogger til CSV...');
+    
+    // Valider input
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      logger.warn('Ugyldig input for CSV-eksport:', errors.array());
+      return res.status(400).json({ errors: errors.array() });
+    }
+    
     try {
         const { carId, startDate, endDate, action } = req.query;
         
         const query = {};
         
         if (carId) {
+            // Valider MongoDB ObjectId format
+            if (!mongoose.Types.ObjectId.isValid(carId)) {
+              logger.warn(`Ugyldig carId format: ${carId}`);
+              return res.status(400).json({ message: 'Ugyldig bil-ID format' });
+            }
+            
             query.carId = carId;
-            console.log(`Filtrerer på bilID: ${carId}`);
+            logger.info(`Filtrerer på bilID: ${carId}`);
         }
         
         if (startDate && endDate) {
@@ -448,30 +929,30 @@ app.get('/api/activity-logs/export', async (req, res) => {
                 $gte: new Date(startDate),
                 $lte: new Date(endDate)
             };
-            console.log(`Filtrerer på tidsperiode: ${startDate} til ${endDate}`);
+            logger.info(`Filtrerer på tidsperiode: ${startDate} til ${endDate}`);
         } else if (startDate) {
             query.timestamp = { $gte: new Date(startDate) };
-            console.log(`Filtrerer på tid fra: ${startDate}`);
+            logger.info(`Filtrerer på tid fra: ${startDate}`);
         } else if (endDate) {
             query.timestamp = { $lte: new Date(endDate) };
-            console.log(`Filtrerer på tid til: ${endDate}`);
+            logger.info(`Filtrerer på tid til: ${endDate}`);
         }
         
         if (action) {
             query.action = action;
-            console.log(`Filtrerer på action: ${action}`);
+            logger.info(`Filtrerer på action: ${action}`);
         }
         
-        console.log('Endelig spørring:', JSON.stringify(query));
+        logger.info('Endelig spørring:', JSON.stringify(query));
         
         const logs = await ActivityLog.find(query)
             .sort({ timestamp: -1 })
             .exec();
             
-        console.log(`Fant ${logs.length} logginnslag for CSV-eksport`);
+        logger.info(`Fant ${logs.length} logginnslag for CSV-eksport`);
             
         // Convert to CSV
-        console.log('Konverterer data til CSV-format...');
+        logger.info('Konverterer data til CSV-format...');
         const headers = [
             'Tidspunkt',
             'Handling',
@@ -480,7 +961,8 @@ app.get('/api/activity-logs/export', async (req, res) => {
             'Tidligere Sjåfør',
             'Ny Sjåfør',
             'Notat',
-            'Bruker'
+            'Bruker',
+            'IP-adresse' // Ny kolonne for sikkerhetssporing
         ];
         
         const actionMap = {
@@ -501,20 +983,26 @@ app.get('/api/activity-logs/export', async (req, res) => {
             log.previousDriver || '-',
             log.newDriver || '-',
             log.note || '',
-            log.userId
+            log.userId,
+            log.ipAddress || '-'
         ]);
         
-        // Create CSV content
+        // Create CSV content with proper escaping for special characters
+        const escapeCsvValue = (value) => {
+          if (value === null || value === undefined) return '';
+          const stringValue = String(value);
+          if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+            return `"${stringValue.replace(/"/g, '""')}"`;
+          }
+          return stringValue;
+        };
+        
         const csvContent = [
             headers.join(','),
-            ...csvData.map(row => row.map(cell => 
-                typeof cell === 'string' && cell.includes(',') 
-                    ? `"${cell.replace(/"/g, '""')}"` 
-                    : cell
-            ).join(','))
+            ...csvData.map(row => row.map(escapeCsvValue).join(','))
         ].join('\n');
         
-        console.log('CSV generert, sender respons...');
+        logger.info('CSV generert, sender respons...');
         
         // Set headers for CSV download
         res.setHeader('Content-Type', 'text/csv;charset=utf-8');
@@ -523,28 +1011,39 @@ app.get('/api/activity-logs/export', async (req, res) => {
         // Send CSV response
         res.send(csvContent);
     } catch (err) {
-        console.error('GET /api/activity-logs/export FEIL:', err);
+        logger.error('GET /api/activity-logs/export FEIL:', err);
         res.status(500).json({ message: 'Server error' });
     }
 });
 
 // Delete car
 app.delete('/api/cars/:id', async (req, res) => {
-    console.log(`DELETE /api/cars/${req.params.id}: Sletter bil...`);
+    logger.info(`DELETE /api/cars/${req.params.id}: Sletter bil...`);
+    
+    // Valider MongoDB ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      logger.warn(`Ugyldig bil-ID format: ${req.params.id}`);
+      return res.status(400).json({ message: 'Ugyldig ID-format' });
+    }
+    
+    // Start en database-sesjon for transaksjoner
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    
     try {
         const { userId } = req.body;
         
-        console.log('Henter og sletter bil...');
-        const deletedCar = await Car.findByIdAndDelete(req.params.id);
+        logger.info('Henter og sletter bil...');
+        const deletedCar = await Car.findByIdAndDelete(req.params.id, { session });
         if (!deletedCar) {
-            console.log(`Bil med ID ${req.params.id} ikke funnet`);
+            logger.warn(`Bil med ID ${req.params.id} ikke funnet`);
             return res.status(404).json({ message: 'Car not found' });
         }
         
-        console.log(`Bil slettet: ${deletedCar.carNumber}, ${deletedCar.registrationNumber}`);
+        logger.info(`Bil slettet: ${deletedCar.carNumber}, ${deletedCar.registrationNumber}`);
         
         // Create activity log entry
-        console.log('Oppretter aktivitetslogg for slettet bil...');
+        logger.info('Oppretter aktivitetslogg for slettet bil...');
         const activityLog = new ActivityLog({
             action: 'car_deleted',
             carId: deletedCar._id,
@@ -553,30 +1052,45 @@ app.delete('/api/cars/:id', async (req, res) => {
             previousDriver: deletedCar.driver,
             newDriver: null,
             note: `Bil slettet fra systemet`,
-            userId: userId || 'system'
+            userId: userId || 'system',
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'] || ''
         });
         
-        await activityLog.save();
-        console.log('Aktivitetslogg lagret');
+        await activityLog.save({ session });
+        logger.info('Aktivitetslogg lagret');
+        
+        // Commit transaksjonen
+        await session.commitTransaction();
+        session.endSession();
         
         res.json({ message: 'Car deleted successfully' });
     } catch (err) {
-        console.error(`DELETE /api/cars/${req.params.id} FEIL:`, err);
+        // Noe gikk galt, rull tilbake hele transaksjonen
+        await session.abortTransaction();
+        session.endSession();
+        
+        logger.error(`DELETE /api/cars/${req.params.id} FEIL:`, err);
         res.status(500).json({ message: 'Server error' });
     }
 });
 
 // Seed initial data if needed
 app.post('/api/seed', async (req, res) => {
-    console.log('POST /api/seed: Legger inn testdata...');
+    logger.info('POST /api/seed: Legger inn testdata...');
+    
+    // Start en database-sesjon for transaksjoner
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    
     try {
         // Clear existing data
-        console.log('Sletter eksisterende data...');
-        await Car.deleteMany({});
-        console.log('Eksisterende data slettet');
+        logger.info('Sletter eksisterende data...');
+        await Car.deleteMany({}, { session });
+        logger.info('Eksisterende data slettet');
         
         // Initial car data
-        console.log('Forbereder testdata...');
+        logger.info('Forbereder testdata...');
         const cars = [
             { carNumber: 39, registrationNumber: 'AB12345', phoneNumber: '480 12 345', driver: 'Ola Nordmann', note: '', registrationTime: new Date('2025-03-22T08:15:00'), status: 'inuse' },
             { carNumber: 40, registrationNumber: 'CD67890', phoneNumber: '480 23 456', driver: 'Kari Nordmann', note: 'Verksted 3.3.15', registrationTime: new Date('2025-03-21T14:30:00'), status: 'inuse' },
@@ -587,15 +1101,41 @@ app.post('/api/seed', async (req, res) => {
             { carNumber: 45, registrationNumber: 'MN12345', phoneNumber: '480 78 901', driver: '', note: '', registrationTime: null, status: 'available' },
         ];
         
-        console.log(`Legger inn ${cars.length} testbiler...`);
-        await Car.insertMany(cars);
-        console.log('Testdata lagt inn');
+        logger.info(`Legger inn ${cars.length} testbiler...`);
+        await Car.insertMany(cars, { session });
+        logger.info('Testdata lagt inn');
+        
+        // Commit transaksjonen
+        await session.commitTransaction();
+        session.endSession();
         
         res.status(201).json({ message: 'Database seeded successfully' });
     } catch (err) {
-        console.error('POST /api/seed FEIL:', err);
+        // Noe gikk galt, rull tilbake hele transaksjonen
+        await session.abortTransaction();
+        session.endSession();
+        
+        logger.error('POST /api/seed FEIL:', err);
         res.status(500).json({ message: 'Server error' });
     }
+});
+
+// Global error handler for ubehandlede feil
+app.use((err, req, res, next) => {
+  logger.error({
+    message: 'Ubehandlet feil oppstod',
+    error: err.message,
+    stack: process.env.NODE_ENV === 'production' ? null : err.stack,
+    path: req.path,
+    method: req.method,
+    ip: req.ip
+  });
+  
+  res.status(500).json({
+    message: process.env.NODE_ENV === 'production' 
+      ? 'Server error' 
+      : err.message
+  });
 });
 
 // Handle React routing, return all requests to React app
@@ -605,6 +1145,6 @@ app.get('*', (req, res) => {
 
 // Start server
 app.listen(PORT, () => {
-    console.log(`Server kjører på port ${PORT}`);
-    console.log(`API tilgjengelig på http://localhost:${PORT}/api/`);
+    logger.info(`Server kjører på port ${PORT}`);
+    logger.info(`API tilgjengelig på http://localhost:${PORT}/api/`);
 });
