@@ -66,20 +66,23 @@ const PORT = process.env.PORT || 5000;
 
 // Valider miljøvariabler ved oppstart
 const validateEnvVars = () => {
-  const requiredVars = [
-    'MONGO_USER', 
-    'MONGO_PASSWORD', 
-    'MONGO_HOST', 
-    'MONGO_PORT',
-    'MONGO_DB'
-  ];
-  
-  const missing = requiredVars.filter(varName => !process.env[varName]);
-  
-  if (missing.length > 0) {
-    logger.error(`Manglende påkrevde miljøvariabler: ${missing.join(', ')}`);
-    if (process.env.NODE_ENV === 'production') {
-      process.exit(1); // Stopp serveren i produksjon hvis nødvendige miljøvariabler mangler
+  // Check if we have a MongoDB URI (for Atlas) or individual connection parameters
+  if (!process.env.MONGO_URI) {
+    const requiredVars = [
+      'MONGO_USER', 
+      'MONGO_PASSWORD', 
+      'MONGO_HOST', 
+      'MONGO_PORT',
+      'MONGO_DB'
+    ];
+    
+    const missing = requiredVars.filter(varName => !process.env[varName]);
+    
+    if (missing.length > 0) {
+      logger.error(`Manglende påkrevde miljøvariabler: ${missing.join(', ')}`);
+      if (process.env.NODE_ENV === 'production') {
+        process.exit(1); // Stopp serveren i produksjon hvis nødvendige miljøvariabler mangler
+      }
     }
   }
 };
@@ -87,9 +90,10 @@ const validateEnvVars = () => {
 validateEnvVars();
 
 // Bygg opp sikker MongoDB connection string
-const mongoURI = process.env.NODE_ENV === 'production' 
-  ? `mongodb://${process.env.MONGO_USER}:${encodeURIComponent(process.env.MONGO_PASSWORD)}@${process.env.MONGO_HOST}:${process.env.MONGO_PORT}/${process.env.MONGO_DB}?authSource=admin&ssl=true`
-  : 'mongodb://localhost:27017/bilregister';
+const mongoURI = process.env.MONGO_URI || 
+  (process.env.NODE_ENV === 'production' 
+    ? `mongodb://${process.env.MONGO_USER}:${encodeURIComponent(process.env.MONGO_PASSWORD)}@${process.env.MONGO_HOST}:${process.env.MONGO_PORT}/${process.env.MONGO_DB}?authSource=admin&ssl=true`
+    : 'mongodb://localhost:27017/bilregister');
 
 // Middleware
 logger.info('Setter opp middleware...');

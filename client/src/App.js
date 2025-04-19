@@ -200,7 +200,6 @@ const App = () => {
     <Router>
       <div className={`app ${tvMode ? 'tv-mode' : ''}`}>
         <div className="container">
-          <h1>Bilsjåfør Registrering</h1>
           
           <nav className="nav">
             <NavLink to="/" className={({ isActive }) => isActive ? "active" : ""}>
