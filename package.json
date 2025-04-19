@@ -2,10 +2,10 @@
     "name": "bilsjafor-registrering-server",
     "version": "1.0.0",
     "description": "Backend for Bilsjåfør Registrering application",
-    "main": "server.js",
+    "main": "server/server.js",
     "scripts": {
-      "start": "node server.js",
-      "dev": "nodemon server.js",
+      "start": "node server/server.js",
+      "dev": "nodemon server/server.js",
       "client": "npm start --prefix client",
       "dev-full": "concurrently \"npm run dev\" \"npm run client\"",
       "install-client": "cd client && npm install",

@@ -12,29 +12,34 @@ bilsjafor-registrering/
 │   │   └── ...
 │   ├── src/                 # React-kildekode
 │   │   ├── components/      # Gjenbrukbare komponenter
-│   │   │   ├── CarRow.js    # Bilrad-komponent for redigering
-│   │   │   ├── ViewCarRow.js# Bilrad-komponent for visning
-│   │   │   ├── AdminCarRow.js # Bilrad-komponent for admin
-│   │   │   ├── KeyboardShortcuts.js # Tastatursnarveikomponent
-│   │   │   ├── RefreshIndicator.js # Oppdateringsindikator
-│   │   │   └── popups/     # Popup-komponenter
-│   │   │       ├── MaintenancePopup.js
-│   │   │       ├── EndAllTripsPopup.js
-│   │   │       └── ShortcutsPopup.js
-│   │   ├── pages/          # Sidekomponenter
-│   │   │   ├── EditPage.js  # Registrer/endre side
-│   │   │   ├── ViewPage.js  # Visningsoversiktside
-│   │   │   ├── AdminPage.js # Administrasjonsside
-│   │   │   └── ActivityLogsPage.js # Aktivitetsloggside
-│   │   ├── styles/         # CSS-filer
-│   │   │   └── App.css     # Hovedstilark
-│   │   ├── App.js          # Hovedapplikasjonskomponent
-│   │   └── index.js        # Applikasjonsinngang
-│   ├── package.json        # Frontend-avhengigheter
+│   │   ├── pages/           # Sidekomponenter
+│   │   ├── styles/          # CSS-filer
+│   │   ├── App.js           # Hovedapplikasjonskomponent
+│   │   └── index.js         # Applikasjonsinngang
+│   ├── package.json         # Frontend-avhengigheter
 │   └── ...
-├── server.js               # Node.js backend
-├── package.json            # Backend-avhengigheter
-└── README.md               # Prosjektdokumentasjon
+├── server/                  # Node.js backend
+│   ├── config/              # Konfigurasjonsfiler
+│   │   ├── db.js            # Database-tilkobling
+│   │   └── logger.js        # Logger-konfigurasjon
+│   ├── middleware/          # Express middleware
+│   │   ├── errorHandler.js  # Feilhåndtering
+│   │   ├── rateLimiter.js   # Begrensning av forespørsler
+│   │   └── validator.js     # Validering av forespørsler
+│   ├── models/              # Mongoose-modeller
+│   │   ├── Car.js           # Bil-modell
+│   │   └── ActivityLog.js   # Aktivitetslogg-modell
+│   ├── routes/              # API-ruter
+│   │   ├── cars.js          # Bil-relaterte endepunkter
+│   │   ├── activityLogs.js  # Aktivitetslogg-endepunkter
+│   │   └── index.js         # Rute-aggregator
+│   ├── utils/               # Hjelpefunksjoner
+│   │   └── security.js      # Sikkerhetsfunksjoner
+│   └── server.js            # Hovedserverfil
+├── logs/                    # Loggfiler
+├── package.json             # Backend-avhengigheter
+├── .env                     # Miljøvariabler (ikke i versjonskontroll)
+└── README.md                # Prosjektdokumentasjon
 ```
 
 ## Oppsett
@@ -118,7 +123,7 @@ bilsjafor-registrering/
 - `PATCH /api/cars/:id/maintenance` - Sett bil til vedlikehold
 - `PATCH /api/cars/end-all-trips` - Avslutt alle turer
 - `DELETE /api/cars/:id` - Slett en bil
-- `POST /api/seed` - Seed initiell data
+- `POST /api/cars/seed` - Seed initiell data
 - `GET /api/activity-logs` - Hent aktivitetslogg
 - `GET /api/activity-logs/export` - Eksporter aktivitetslogg til CSV
 
@@ -144,7 +149,9 @@ ActivityLog {
   newDriver: String,
   note: String,
   userId: String,
-  timestamp: Date
+  timestamp: Date,
+  ipAddress: String,
+  userAgent: String
 }
 ```
 
