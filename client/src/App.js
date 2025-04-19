@@ -21,6 +21,12 @@ import './styles/App.css';
 // API base URL - Change this to your server URL
 const API_URL = 'http://localhost:5000/api';
 
+// Funksjon for å sjekke om vi er i kiosk-modus
+const checkIsKioskMode = () => {
+  const urlParams = new URLSearchParams(window.location.search);
+  return urlParams.get('tv') === 'true';
+};
+
 const App = () => {
   // State
   const [cars, setCars] = useState([]);
@@ -32,8 +38,31 @@ const App = () => {
   const [endAllTripsPopupOpen, setEndAllTripsPopupOpen] = useState(false);
   const [shortcutsPopupOpen, setShortcutsPopupOpen] = useState(false);
   
-  // TV mode state
-  const [tvMode, setTvMode] = useState(false);
+  // TV mode state - initialiseres med URL-parameteren
+  const [tvMode, setTvMode] = useState(checkIsKioskMode());
+
+  // Sjekk URL-parameteren for TV-modus
+  useEffect(() => {
+    // Sjekk om det er tv=true i URL
+    const urlTvMode = checkIsKioskMode();
+    
+    if (urlTvMode) {
+      setTvMode(true);
+    }
+  }, []);
+
+  // Oppdater body-klassen når tvMode endres
+  useEffect(() => {
+    if (tvMode) {
+      document.body.classList.add('tv-mode');
+    } else {
+      document.body.classList.remove('tv-mode');
+    }
+    
+    return () => {
+      document.body.classList.remove('tv-mode');
+    };
+  }, [tvMode]);
   
   // Fetch cars from API
   const fetchCars = async () => {
@@ -53,7 +82,16 @@ const App = () => {
   // Fetch cars on component mount
   useEffect(() => {
     fetchCars();
-  }, []);
+    
+    // Hvis i TV-modus, sett opp periodisk refresh
+    if (tvMode) {
+      const refreshInterval = setInterval(() => {
+        fetchCars();
+      }, 60000); // Refresh hvert minutt
+      
+      return () => clearInterval(refreshInterval);
+    }
+  }, [tvMode]);
   
   // Save driver function
   const saveDriver = async (carId, driver, note) => {
@@ -154,23 +192,35 @@ const App = () => {
       switch (event.key.toLowerCase()) {
         case 'e':
           // Navigate to Edit page
-          window.location.hash = '#/';
+          window.location.href = '/';
           break;
         case 'v':
           // Navigate to View page
-          window.location.hash = '#/view';
+          window.location.href = '/view';
           break;
         case 'a':
           // Navigate to Admin page
-          window.location.hash = '#/admin';
+          window.location.href = '/admin';
           break;
         case 'l':
           // Navigate to Logs page
-          window.location.hash = '#/logs';
+          window.location.href = '/logs';
           break;
         case 't':
           // Toggle TV mode
           toggleTvMode();
+          break;
+        case 'k':
+          // Gå inn/ut av kiosk-modus (bare med Ctrl-tast)
+          if (event.ctrlKey) {
+            if (tvMode) {
+              // Avslutt kiosk-modus
+              window.location.href = '/view';
+            } else {
+              // Start kiosk-modus
+              window.location.href = '/view?tv=true';
+            }
+          }
           break;
         case 's':
           // Focus search input
@@ -182,6 +232,12 @@ const App = () => {
           setMaintenancePopupOpen(false);
           setEndAllTripsPopupOpen(false);
           setShortcutsPopupOpen(false);
+
+          // Avslutt TV-modus hvis Escape trykkes i TV-modus
+          // men bare hvis vi ikke er i kiosk-modus via URL
+          if (tvMode && !checkIsKioskMode()) {
+            toggleTvMode();
+          }
           break;
         default:
           break;
@@ -194,32 +250,41 @@ const App = () => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, []);
+  }, [tvMode]);
+  
+  // Skjul navigasjon i TV-modus fra URL
+  const shouldShowNavigation = !checkIsKioskMode();
   
   return (
     <Router>
       <div className={`app ${tvMode ? 'tv-mode' : ''}`}>
         <div className="container">
           
-          <nav className="nav">
-            <NavLink to="/" className={({ isActive }) => isActive ? "active" : ""}>
-              Registrer/Endre
-            </NavLink>
-            <NavLink to="/view" className={({ isActive }) => isActive ? "active" : ""}>
-              Vis Oversikt
-            </NavLink>
-            <NavLink to="/admin" className={({ isActive }) => isActive ? "active" : ""}>
-              Admin
-            </NavLink>
-            <NavLink to="/logs" className={({ isActive }) => isActive ? "active" : ""}>
-              Aktivitetslogg
-            </NavLink>
-          </nav>
+          {shouldShowNavigation && (
+            <nav className="nav">
+              <NavLink to="/" className={({ isActive }) => isActive ? "active" : ""}>
+                Registrer/Endre
+              </NavLink>
+              <NavLink to="/view" className={({ isActive }) => isActive ? "active" : ""}>
+                Vis Oversikt
+              </NavLink>
+              <NavLink to="/admin" className={({ isActive }) => isActive ? "active" : ""}>
+                Admin
+              </NavLink>
+              <NavLink to="/logs" className={({ isActive }) => isActive ? "active" : ""}>
+                Aktivitetslogg
+              </NavLink>
+            </nav>
+          )}
           
           {isLoading ? (
-            <div className="loading">Laster data...</div>
+            <div className={tvMode ? "kiosk-loading" : "loading"}>
+              Laster data...
+            </div>
           ) : error ? (
-            <div className="error">{error}</div>
+            <div className={tvMode ? "kiosk-error" : "error"}>
+              {error}
+            </div>
           ) : (
             <Routes>
               <Route path="/" element={
@@ -250,27 +315,31 @@ const App = () => {
           )}
         </div>
         
-        {/* Popups */}
-        <MaintenancePopup 
-          isOpen={maintenancePopupOpen} 
-          onClose={() => setMaintenancePopupOpen(false)} 
-          cars={cars}
-          onConfirm={setMaintenanceCar}
-        />
-        
-        <EndAllTripsPopup 
-          isOpen={endAllTripsPopupOpen} 
-          onClose={() => setEndAllTripsPopupOpen(false)} 
-          onConfirm={endAllTrips}
-        />
-        
-        <ShortcutsPopup 
-          isOpen={shortcutsPopupOpen} 
-          onClose={() => setShortcutsPopupOpen(false)} 
-        />
-        
-        {/* Keyboard shortcuts indicator */}
-        <KeyboardShortcuts onClick={() => setShortcutsPopupOpen(true)} />
+        {/* Popups - vises ikke i TV-modus hvis vi er i kiosk-modus */}
+        {!checkIsKioskMode() && (
+          <>
+            <MaintenancePopup 
+              isOpen={maintenancePopupOpen} 
+              onClose={() => setMaintenancePopupOpen(false)} 
+              cars={cars}
+              onConfirm={setMaintenanceCar}
+            />
+            
+            <EndAllTripsPopup 
+              isOpen={endAllTripsPopupOpen} 
+              onClose={() => setEndAllTripsPopupOpen(false)} 
+              onConfirm={endAllTrips}
+            />
+            
+            <ShortcutsPopup 
+              isOpen={shortcutsPopupOpen} 
+              onClose={() => setShortcutsPopupOpen(false)} 
+            />
+            
+            {/* Keyboard shortcuts indicator */}
+            <KeyboardShortcuts onClick={() => setShortcutsPopupOpen(true)} />
+          </>
+        )}
       </div>
     </Router>
   );

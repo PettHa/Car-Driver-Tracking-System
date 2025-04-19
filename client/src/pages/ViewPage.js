@@ -1,15 +1,34 @@
-// src/pages/ViewPage.js
+// src/pages/ViewPage.js - Med støtte for tv-parameter i URL
 import React, { useState, useEffect } from 'react';
 import ViewCarRow from '../components/ViewCarRow';
 import RefreshIndicator from '../components/RefreshIndicator';
 
-const ViewPage = ({ cars, openEndAllTripsPopup, tvMode, toggleTvMode }) => {
+const ViewPage = ({ cars, openEndAllTripsPopup, tvMode: propsTvMode, toggleTvMode }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [countdownTime, setCountdownTime] = useState(60);
   const [inUseCars, setInUseCars] = useState([]);
+  
+  // Sjekk om tv=true i URL-parameteren
+  const [isTvMode, setIsTvMode] = useState(false);
+  
+  // Sjekk URL-parameter og prop for TV-modus
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlTvMode = urlParams.get('tv') === 'true';
+    
+    // Sett TV-modus hvis enten prop eller URL-parameter indikerer det
+    if (urlTvMode || propsTvMode) {
+      setIsTvMode(true);
+    } else {
+      setIsTvMode(false);
+    }
+  }, [propsTvMode]);
 
   // Filter cars based on search term
   const filteredCars = cars.filter(car => {
+    // Hvis TV-modus, vis alle biler
+    if (isTvMode) return true;
+    
     const searchLower = searchTerm.toLowerCase();
     return (
       car.carNumber.toString().includes(searchLower) ||
@@ -68,12 +87,15 @@ const ViewPage = ({ cars, openEndAllTripsPopup, tvMode, toggleTvMode }) => {
 
   // Auto refresh countdown
   useEffect(() => {
-    if (!tvMode) return;
+    if (!isTvMode) return;
 
     const interval = setInterval(() => {
       setCountdownTime(prev => {
         if (prev <= 1) {
-          // This would be the place to fetch fresh data
+          // Triggeret ville normalt hente nye data
+          // Men siden fetchCars() ikke er tilgjengelig her, 
+          // lar vi komponenten gjenbruke for hver oppdatering
+          window.location.reload();
           return 60;
         }
         return prev - 1;
@@ -81,13 +103,57 @@ const ViewPage = ({ cars, openEndAllTripsPopup, tvMode, toggleTvMode }) => {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [tvMode]);
+  }, [isTvMode]);
 
   // Update inUseCars whenever cars changes
   useEffect(() => {
     setInUseCars(cars.filter(car => car.status === 'inuse'));
   }, [cars]);
 
+  // TV modus rendring - enkel versjon uten kontroller
+  if (isTvMode) {
+    return (
+      <div className="page-transition tv-view">
+        <h2>Oversikt over Bilbruk</h2>
+        <div className="last-updated">
+          Sist oppdatert: {new Date().toLocaleTimeString('no')}
+        </div>
+        
+        <div className="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Bil Nr</th>
+                <th>Registreringsnr</th>
+                <th>Telefon</th>
+                <th>Sjåfør</th>
+                <th>Registrert</th>
+                <th>Merknad</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedCars.length > 0 ? (
+                sortedCars.map(car => (
+                  <ViewCarRow key={car._id} car={car} />
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="7" className="empty-state" style={{ textAlign: 'center' }}>
+                    Ingen biler funnet
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        
+        <RefreshIndicator countdown={countdownTime} visible={true} />
+      </div>
+    );
+  }
+
+  // Normal view with controls
   return (
     <div className="page-transition">
       <h2>Oversikt over Bilbruk</h2>
@@ -120,7 +186,7 @@ const ViewPage = ({ cars, openEndAllTripsPopup, tvMode, toggleTvMode }) => {
           className="btn btn-primary" 
           onClick={toggleTvMode}
         >
-          {tvMode ? 'Avslutt TV-modus' : 'TV-modus'}
+          {propsTvMode ? 'Avslutt TV-modus' : 'TV-modus'}
         </button>
       </div>
       
@@ -151,7 +217,7 @@ const ViewPage = ({ cars, openEndAllTripsPopup, tvMode, toggleTvMode }) => {
         </tbody>
       </table>
       
-      <RefreshIndicator countdown={countdownTime} visible={tvMode} />
+      <RefreshIndicator countdown={countdownTime} visible={propsTvMode} />
     </div>
   );
 };

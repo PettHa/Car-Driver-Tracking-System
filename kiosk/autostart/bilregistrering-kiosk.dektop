@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Bilsjåfør Registrering Kiosk
+Comment=Start bilregistreringssystem i kiosk-modus
+Exec=/bin/bash /home/pi/bilsjafor-registrering/kiosk/start-kiosk.sh
+Icon=utilities-terminal
+Terminal=false
+X-GNOME-Autostart-enabled=true
+Categories=Utility;
