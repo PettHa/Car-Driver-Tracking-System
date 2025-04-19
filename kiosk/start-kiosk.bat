@@ -1,5 +1,5 @@
 @echo off
-REM Bilsjåfør Registrering Kiosk Starter for Windows
+REM Bilregistrering Kiosk Starter for Windows
 TITLE Bilsjafor Kiosk Starter
 
 REM Sett variabler
@@ -14,7 +14,7 @@ cd ..
 REM Skriv ut banner
 echo.
 echo  ===================================================
-echo          Bilsjafor Registrering Kiosk
+echo               Bilregistrering Kiosk
 echo  ===================================================
 echo.
 

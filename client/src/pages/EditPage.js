@@ -51,13 +51,13 @@ const EditPage = ({ cars, saveDriver, openMaintenancePopup }) => {
 
   return (
     <div className="page-transition">
-      <h2>Registrer/Endre Sjåfør for Bil</h2>
+      <h2>Registrer/Endre Ansatt for Bil</h2>
       
       <div className="search-container">
         <input 
           type="text" 
           className="search-input" 
-          placeholder="Søk etter bil eller sjåfør..."
+          placeholder="Søk etter bil eller ansatt..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
@@ -78,7 +78,7 @@ const EditPage = ({ cars, saveDriver, openMaintenancePopup }) => {
             <th>Bil Nr</th>
             <th>Registreringsnr</th>
             <th>Telefon</th>
-            <th>Sjåfør</th>
+            <th>Ansatt</th>
             <th>Merknad</th>
             <th>Reg. tidspunkt</th>
             <th>Status</th>

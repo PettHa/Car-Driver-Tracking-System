@@ -1,6 +1,6 @@
-# Bilsjåfør Registrering
+# Bilregistrering
 
-En webapplikasjon for å administrere kjøretøy og sjåfører, bygget med Node.js og React.
+En webapplikasjon for å administrere kjøretøy og ansatte, bygget med Node.js og React.
 
 ## Prosjektstruktur
 

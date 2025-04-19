@@ -157,8 +157,8 @@ const ActivityLogsPage = () => {
               style={{ width: '100%' }}
             >
               <option value="">Alle handlinger</option>
-              <option value="driver_assigned">Sjåfør tildelt</option>
-              <option value="driver_removed">Sjåfør fjernet</option>
+              <option value="driver_assigned">Ansatt tildelt</option>
+              <option value="driver_removed">Ansatt fjernet</option>
               <option value="maintenance_set">Satt til vedlikehold</option>
               <option value="maintenance_cleared">Fjernet fra vedlikehold</option>
               <option value="car_added">Bil lagt til</option>
@@ -226,8 +226,8 @@ const ActivityLogsPage = () => {
               <th>Handling</th>
               <th>Bil Nr</th>
               <th>Registreringsnr</th>
-              <th>Tidligere Sjåfør</th>
-              <th>Ny Sjåfør</th>
+              <th>Tidligere Ansatt</th>
+              <th>Ny Ansatt</th>
               <th>Notat</th>
               <th>Bruker</th>
             </tr>

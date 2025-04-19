@@ -137,8 +137,8 @@ router.get('/export', activityLogValidationRules, async (req, res) => {
     ];
     
     const actionMap = {
-      'driver_assigned': 'Sjåfør tildelt',
-      'driver_removed': 'Sjåfør fjernet',
+      'driver_assigned': 'Ansatt tildelt',
+      'driver_removed': 'Ansatt fjernet',
       'maintenance_set': 'Satt til vedlikehold',
       'maintenance_cleared': 'Fjernet fra vedlikehold',
       'car_added': 'Bil lagt til',

@@ -126,7 +126,7 @@ const ViewPage = ({ cars, openEndAllTripsPopup, tvMode: propsTvMode, toggleTvMod
                 <th>Bil Nr</th>
                 <th>Registreringsnr</th>
                 <th>Telefon</th>
-                <th>Sjåfør</th>
+                <th>Ansatt</th>
                 <th>Registrert</th>
                 <th>Merknad</th>
                 <th>Status</th>
@@ -162,7 +162,7 @@ const ViewPage = ({ cars, openEndAllTripsPopup, tvMode: propsTvMode, toggleTvMod
         <input 
           type="text" 
           className="search-input" 
-          placeholder="Søk etter bil, sjåfør eller merknad..."
+          placeholder="Søk etter bil, ansatt eller merknad..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
@@ -196,7 +196,7 @@ const ViewPage = ({ cars, openEndAllTripsPopup, tvMode: propsTvMode, toggleTvMod
             <th>Bil Nr</th>
             <th>Registreringsnr</th>
             <th>Telefon</th>
-            <th>Sjåfør</th>
+            <th>Ansatt</th>
             <th>Registrert</th>
             <th>Merknad</th>
             <th>Status</th>

@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Bilsjåfør Registrering Kiosk
+Name=Bilregistrering Kiosk
 Comment=Start bilregistreringssystem i kiosk-modus
 Exec=/bin/bash /home/pi/bilsjafor-registrering/kiosk/start-kiosk.sh
 Icon=utilities-terminal

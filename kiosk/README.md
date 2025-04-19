@@ -1,4 +1,4 @@
-# Kiosk-modus for Bilsjåfør Registrering
+# Kiosk-modus for Bilregistrering
 
 Dette er en kiosk-modus løsning for bilsjåfør-registreringsapplikasjonen designet for å kjøre på en Raspberry Pi tilkoblet en TV-skjerm.
 

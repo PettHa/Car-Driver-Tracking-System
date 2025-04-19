@@ -16,7 +16,7 @@ NC='\033[0m' # Ingen farge
 echo -e "${GREEN}"
 echo "╔════════════════════════════════════════════════════╗"
 echo "║                                                    ║"
-echo "║           Bilsjåfør Registrering Kiosk             ║"
+echo "║              Bilregistrering Kiosk                 ║"
 echo "║                                                    ║"
 echo "╚════════════════════════════════════════════════════╝"
 echo -e "${NC}"
