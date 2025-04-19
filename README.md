@@ -1,11 +1,11 @@
 # Bilregistrering
 
-En webapplikasjon for å administrere kjøretøy og ansatte, bygget med Node.js og React.
+En webapplikasjon for å administrere kjøretøy og ansatte i trygghetsalarmtjenesten, bygget med Node.js og React.
 
 ## Prosjektstruktur
 
 ```
-bilsjafor-registrering/
+bilregistrering/
 ├── client/                  # React frontend
 │   ├── public/              # Statiske filer
 │   │   ├── index.html       # HTML-mal
@@ -36,6 +36,12 @@ bilsjafor-registrering/
 │   ├── utils/               # Hjelpefunksjoner
 │   │   └── security.js      # Sikkerhetsfunksjoner
 │   └── server.js            # Hovedserverfil
+├── kiosk/                   # Kiosk-modus for visning på TV-skjermer
+│   ├── autostart/           # Autostart-konfigurasjon
+│   ├── scripts/             # Hjelpeskript
+│   ├── start-kiosk.sh       # Hovedskript for Linux/Raspberry Pi
+│   ├── start-kiosk.bat      # Versjon for Windows
+│   └── README.md            # Kiosk-dokumentasjon
 ├── logs/                    # Loggfiler
 ├── package.json             # Backend-avhengigheter
 ├── .env                     # Miljøvariabler (ikke i versjonskontroll)
@@ -55,7 +61,7 @@ bilsjafor-registrering/
 1. Klon prosjektet:
    ```
    git clone <repository-url>
-   cd bilsjafor-registrering
+   cd bilregistrering
    ```
 
 2. Installer backend-avhengigheter:
@@ -108,10 +114,12 @@ bilsjafor-registrering/
 
 ## Funksjonalitet
 
-- **Registrer/Endre**: Administrer sjåfører for biler
+- **Registrer/Endre**: Administrer ansatte for biler
 - **Vis Oversikt**: Se status for alle biler
 - **Admin**: Legg til og rediger bilinformasjon
-- **Aktivitetslogg**: Spor alle endringer på biler, sjåfører og vedlikeholdsstatus
+- **Aktivitetslogg**: Spor alle endringer på biler, ansatte og vedlikeholdsstatus
+- **TV-modus**: Viser bilstatus på en stor skjerm, ideell for kontrollrom
+- **Kiosk-modus**: Dedikert visning på Raspberry Pi eller andre skjermer
 
 ## API-endepunkter
 
@@ -119,7 +127,7 @@ bilsjafor-registrering/
 - `GET /api/cars/:id` - Hent en spesifikk bil
 - `POST /api/cars` - Opprett en ny bil
 - `PUT /api/cars/:id` - Oppdater en bil
-- `PATCH /api/cars/:id/driver` - Oppdater sjåførinformasjon
+- `PATCH /api/cars/:id/driver` - Oppdater ansattinformasjon
 - `PATCH /api/cars/:id/maintenance` - Sett bil til vedlikehold
 - `PATCH /api/cars/end-all-trips` - Avslutt alle turer
 - `DELETE /api/cars/:id` - Slett en bil
@@ -134,7 +142,7 @@ Car {
   carNumber: Number,
   registrationNumber: String,
   phoneNumber: String,
-  driver: String,
+  driver: String,          # Ansattens navn
   note: String,
   registrationTime: Date,
   status: String (available, inuse, maintenance)
@@ -145,8 +153,8 @@ ActivityLog {
   carId: ObjectId,
   carNumber: Number,
   registrationNumber: String,
-  previousDriver: String,
-  newDriver: String,
+  previousDriver: String,  # Tidligere ansatt
+  newDriver: String,       # Ny ansatt
   note: String,
   userId: String,
   timestamp: Date,
@@ -154,6 +162,38 @@ ActivityLog {
   userAgent: String
 }
 ```
+
+## Kiosk-modus
+
+Prosjektet inkluderer en kiosk-løsning for å vise biloversikten på dedikerte skjermer eller Raspberry Pi. For detaljert oppsett, se [kiosk/README.md](kiosk/README.md).
+
+### Hovedfunksjoner for kiosk-modus:
+
+- Automatisk oppstart ved systemstart
+- Fullskjermsvisning av biloversikten
+- Automatisk oppdatering hvert minutt
+- Deaktivering av skjermsparer og strømstyringsfunksjoner
+- Støtte for både Raspberry Pi og Windows
+
+## Tastatursnarveier
+
+- `E` - Gå til Registrer/Endre
+- `V` - Gå til Vis Oversikt
+- `A` - Gå til Admin
+- `L` - Gå til Aktivitetslogg
+- `T` - Slå på/av TV-modus
+- `Ctrl+K` - Start/avslutt kiosk-modus
+- `S` - Fokusér søkefeltet
+- `Esc` - Lukk popup eller avslutt TV-modus
+
+## Sikkerhet
+
+Systemet inkluderer flere sikkerhetsfunksjoner:
+- Input-validering og sanering
+- Rate limiting for å forhindre overbelastning
+- Logging av IP-adresser og brukeragenter for sporbarhet
+- HMAC-basert dataintegritetssjekk
+- XSS-beskyttelse gjennom input-sanering
 
 ## Lisens
 
