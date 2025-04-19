@@ -18,8 +18,9 @@ import KeyboardShortcuts from './components/KeyboardShortcuts';
 // Import styles
 import './styles/App.css';
 
-// API base URL - Change this to your server URL
-const API_URL = 'http://localhost:5000/api';
+// ---- FJERN DENNE LINJEN ----
+// const API_URL = 'http://localhost:5000/api';
+// ---------------------------
 
 // Funksjon for å sjekke om vi er i kiosk-modus
 const checkIsKioskMode = () => {
@@ -32,20 +33,18 @@ const App = () => {
   const [cars, setCars] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  
+
   // Popup states
   const [maintenancePopupOpen, setMaintenancePopupOpen] = useState(false);
   const [endAllTripsPopupOpen, setEndAllTripsPopupOpen] = useState(false);
   const [shortcutsPopupOpen, setShortcutsPopupOpen] = useState(false);
-  
+
   // TV mode state - initialiseres med URL-parameteren
   const [tvMode, setTvMode] = useState(checkIsKioskMode());
 
   // Sjekk URL-parameteren for TV-modus
   useEffect(() => {
-    // Sjekk om det er tv=true i URL
     const urlTvMode = checkIsKioskMode();
-    
     if (urlTvMode) {
       setTvMode(true);
     }
@@ -58,17 +57,19 @@ const App = () => {
     } else {
       document.body.classList.remove('tv-mode');
     }
-    
     return () => {
       document.body.classList.remove('tv-mode');
     };
   }, [tvMode]);
-  
+
   // Fetch cars from API
   const fetchCars = async () => {
     try {
       setIsLoading(true);
-      const response = await axios.get(`${API_URL}/cars`);
+      // ---- ENDRE DENNE LINJEN ----
+      // const response = await axios.get(`${API_URL}/cars`);
+      const response = await axios.get('/api/cars'); // Bruk relativ sti
+      // ---------------------------
       setCars(response.data);
       setError(null);
     } catch (err) {
@@ -78,52 +79,57 @@ const App = () => {
       setIsLoading(false);
     }
   };
-  
-  // Fetch cars on component mount
+
+  // Fetch cars on component mount and handle refresh interval
   useEffect(() => {
-    fetchCars();
-    
-    // Hvis i TV-modus, sett opp periodisk refresh
+    fetchCars(); // Fetch initial data
+
+    let refreshIntervalId = null;
     if (tvMode) {
-      const refreshInterval = setInterval(() => {
-        fetchCars();
-      }, 60000); // Refresh hvert minutt
-      
-      return () => clearInterval(refreshInterval);
+      refreshIntervalId = setInterval(fetchCars, 60000); // Refresh every minute
     }
-  }, [tvMode]);
-  
+
+    // Cleanup interval on component unmount or when tvMode changes
+    return () => {
+      if (refreshIntervalId) {
+        clearInterval(refreshIntervalId);
+      }
+    };
+  }, [tvMode]); // Re-run effect if tvMode changes
+
   // Save driver function
   const saveDriver = async (carId, driver, note) => {
     try {
-      const response = await axios.patch(`${API_URL}/cars/${carId}/driver`, { driver, note });
-      
-      // Update cars state with updated car
-      setCars(prevCars => 
-        prevCars.map(car => 
+      // ---- ENDRE DENNE LINJEN ----
+      // const response = await axios.patch(`${API_URL}/cars/${carId}/driver`, { driver, note });
+      const response = await axios.patch(`/api/cars/${carId}/driver`, { driver, note }); // Bruk relativ sti
+      // ---------------------------
+
+      setCars(prevCars =>
+        prevCars.map(car =>
           car._id === carId ? response.data : car
         )
       );
-      
       return true;
     } catch (err) {
       console.error('Error saving driver:', err);
       return false;
     }
   };
-  
+
   // Set car to maintenance
   const setMaintenanceCar = async (carId, note) => {
     try {
-      const response = await axios.patch(`${API_URL}/cars/${carId}/maintenance`, { note });
-      
-      // Update cars state with updated car
-      setCars(prevCars => 
-        prevCars.map(car => 
+      // ---- ENDRE DENNE LINJEN ----
+      // const response = await axios.patch(`${API_URL}/cars/${carId}/maintenance`, { note });
+      const response = await axios.patch(`/api/cars/${carId}/maintenance`, { note }); // Bruk relativ sti
+      // ---------------------------
+
+      setCars(prevCars =>
+        prevCars.map(car =>
           car._id === carId ? response.data : car
         )
       );
-      
       setMaintenancePopupOpen(false);
       return true;
     } catch (err) {
@@ -131,15 +137,16 @@ const App = () => {
       return false;
     }
   };
-  
+
   // End all trips
   const endAllTrips = async () => {
     try {
-      await axios.patch(`${API_URL}/cars/end-all-trips`);
-      
-      // Refetch all cars to get updated data
-      fetchCars();
-      
+      // ---- ENDRE DENNE LINJEN ----
+      // await axios.patch(`${API_URL}/cars/end-all-trips`);
+      await axios.patch('/api/cars/end-all-trips'); // Bruk relativ sti
+      // ---------------------------
+
+      await fetchCars(); // Refetch all cars to get updated data (fetchCars uses relative path now)
       setEndAllTripsPopupOpen(false);
       return true;
     } catch (err) {
@@ -147,119 +154,87 @@ const App = () => {
       return false;
     }
   };
-  
+
   // Save car details in admin
   const saveCar = async (carId, carData) => {
     try {
+      let response;
       if (carId) {
         // Update existing car
-        const response = await axios.put(`${API_URL}/cars/${carId}`, carData);
-        
-        // Update cars state with updated car
-        setCars(prevCars => 
-          prevCars.map(car => 
+        // ---- ENDRE DENNE LINJEN ----
+        // response = await axios.put(`${API_URL}/cars/${carId}`, carData);
+        response = await axios.put(`/api/cars/${carId}`, carData); // Bruk relativ sti
+        // ---------------------------
+        setCars(prevCars =>
+          prevCars.map(car =>
             car._id === carId ? response.data : car
           )
         );
       } else {
         // Create new car
-        const response = await axios.post(`${API_URL}/cars`, carData);
-        
-        // Add new car to cars state
+        // ---- ENDRE DENNE LINJEN ----
+        // response = await axios.post(`${API_URL}/cars`, carData);
+        response = await axios.post('/api/cars', carData); // Bruk relativ sti
+        // ---------------------------
         setCars(prevCars => [...prevCars, response.data]);
       }
-      
       return true;
     } catch (err) {
       console.error('Error saving car:', err);
       return false;
     }
   };
-  
+
   // Toggle TV mode
   const toggleTvMode = () => {
     setTvMode(prev => !prev);
   };
-  
-  // Keyboard shortcuts
+
+  // Keyboard shortcuts (ingen endringer her)
   useEffect(() => {
     const handleKeyDown = (event) => {
-      // Don't trigger shortcuts if user is typing in an input or textarea
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName)) {
         return;
       }
-      
       switch (event.key.toLowerCase()) {
-        case 'e':
-          // Navigate to Edit page
-          window.location.href = '/';
-          break;
-        case 'v':
-          // Navigate to View page
-          window.location.href = '/view';
-          break;
-        case 'a':
-          // Navigate to Admin page
-          window.location.href = '/admin';
-          break;
-        case 'l':
-          // Navigate to Logs page
-          window.location.href = '/logs';
-          break;
-        case 't':
-          // Toggle TV mode
-          toggleTvMode();
-          break;
+        case 'e': window.location.href = '/'; break;
+        case 'v': window.location.href = '/view'; break;
+        case 'a': window.location.href = '/admin'; break;
+        case 'l': window.location.href = '/logs'; break;
+        case 't': toggleTvMode(); break;
         case 'k':
-          // Gå inn/ut av kiosk-modus (bare med Ctrl-tast)
           if (event.ctrlKey) {
-            if (tvMode) {
-              // Avslutt kiosk-modus
-              window.location.href = '/view';
-            } else {
-              // Start kiosk-modus
-              window.location.href = '/view?tv=true';
-            }
+            window.location.href = tvMode ? '/view' : '/view?tv=true';
           }
           break;
         case 's':
-          // Focus search input
           const searchInput = document.querySelector('.search-input');
           if (searchInput) searchInput.focus();
           break;
         case 'escape':
-          // Close all popups
           setMaintenancePopupOpen(false);
           setEndAllTripsPopupOpen(false);
           setShortcutsPopupOpen(false);
-
-          // Avslutt TV-modus hvis Escape trykkes i TV-modus
-          // men bare hvis vi ikke er i kiosk-modus via URL
           if (tvMode && !checkIsKioskMode()) {
             toggleTvMode();
           }
           break;
-        default:
-          break;
+        default: break;
       }
     };
-    
     window.addEventListener('keydown', handleKeyDown);
-    
-    // Cleanup
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [tvMode]);
-  
-  // Skjul navigasjon i TV-modus fra URL
+  }, [tvMode, toggleTvMode]); // Added toggleTvMode to dependencies
+
   const shouldShowNavigation = !checkIsKioskMode();
-  
+
   return (
     <Router>
       <div className={`app ${tvMode ? 'tv-mode' : ''}`}>
         <div className="container">
-          
+
           {shouldShowNavigation && (
             <nav className="nav">
               <NavLink to="/" className={({ isActive }) => isActive ? "active" : ""}>
@@ -276,7 +251,7 @@ const App = () => {
               </NavLink>
             </nav>
           )}
-          
+
           {isLoading ? (
             <div className={tvMode ? "kiosk-loading" : "loading"}>
               Laster data...
@@ -288,55 +263,51 @@ const App = () => {
           ) : (
             <Routes>
               <Route path="/" element={
-                <EditPage 
-                  cars={cars} 
-                  saveDriver={saveDriver} 
-                  openMaintenancePopup={() => setMaintenancePopupOpen(true)} 
+                <EditPage
+                  cars={cars}
+                  saveDriver={saveDriver}
+                  openMaintenancePopup={() => setMaintenancePopupOpen(true)}
                 />
               } />
               <Route path="/view" element={
-                <ViewPage 
-                  cars={cars} 
-                  openEndAllTripsPopup={() => setEndAllTripsPopupOpen(true)} 
+                <ViewPage
+                  cars={cars}
+                  openEndAllTripsPopup={() => setEndAllTripsPopupOpen(true)}
                   tvMode={tvMode}
                   toggleTvMode={toggleTvMode}
                 />
               } />
               <Route path="/admin" element={
-                <AdminPage 
-                  cars={cars} 
-                  saveCar={saveCar} 
+                <AdminPage
+                  cars={cars}
+                  saveCar={saveCar}
                 />
               } />
               <Route path="/logs" element={
-                <ActivityLogsPage />
+                <ActivityLogsPage /> /* Sender ikke props her, den henter data selv */
               } />
             </Routes>
           )}
         </div>
-        
-        {/* Popups - vises ikke i TV-modus hvis vi er i kiosk-modus */}
+
+        {/* Popups */}
         {!checkIsKioskMode() && (
           <>
-            <MaintenancePopup 
-              isOpen={maintenancePopupOpen} 
-              onClose={() => setMaintenancePopupOpen(false)} 
+            <MaintenancePopup
+              isOpen={maintenancePopupOpen}
+              onClose={() => setMaintenancePopupOpen(false)}
               cars={cars}
               onConfirm={setMaintenanceCar}
             />
-            
-            <EndAllTripsPopup 
-              isOpen={endAllTripsPopupOpen} 
-              onClose={() => setEndAllTripsPopupOpen(false)} 
+            <EndAllTripsPopup
+              isOpen={endAllTripsPopupOpen}
+              onClose={() => setEndAllTripsPopupOpen(false)}
               onConfirm={endAllTrips}
             />
-            
-            <ShortcutsPopup 
-              isOpen={shortcutsPopupOpen} 
-              onClose={() => setShortcutsPopupOpen(false)} 
+            <ShortcutsPopup
+              isOpen={shortcutsPopupOpen}
+              onClose={() => setShortcutsPopupOpen(false)}
             />
-            
-            {/* Keyboard shortcuts indicator */}
             <KeyboardShortcuts onClick={() => setShortcutsPopupOpen(true)} />
           </>
         )}

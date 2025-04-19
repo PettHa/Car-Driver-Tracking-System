@@ -4,37 +4,38 @@
     "description": "Backend for Bilsjåfør Registrering application",
     "main": "server/server.js",
     "scripts": {
-      "start": "node server/server.js",
-      "dev": "nodemon server/server.js",
-      "client": "npm start --prefix client",
-      "dev-full": "concurrently \"npm run dev\" \"npm run client\"",
-      "install-client": "cd client && npm install",
-      "build-client": "cd client && npm run build",
-      "heroku-postbuild": "NPM_CONFIG_PRODUCTION=false npm run install-client && npm run build-client",
-      "audit": "npm audit",
-      "update": "npm update",
-      "audit:fix": "npm audit fix",
-      "outdated": "npm outdated"
+        "start": "node server/server.js",
+        "dev": "nodemon server/server.js",
+        "client": "cross-env HOST=0.0.0.0 npm start --prefix client",
+        "dev-full": "concurrently \"npm run dev\" \"npm run client\"",
+        "install-client": "cd client && npm install",
+        "build-client": "cd client && npm run build",
+        "heroku-postbuild": "NPM_CONFIG_PRODUCTION=false npm run install-client && npm run build-client",
+        "audit": "npm audit",
+        "update": "npm update",
+        "audit:fix": "npm audit fix",
+        "outdated": "npm outdated"
     },
     "author": "",
     "license": "ISC",
     "dependencies": {
-      "body-parser": "^1.19.0",
-      "cors": "^2.8.5",
-      "dotenv": "^16.3.1",
-      "express": "^4.17.1",
-      "express-rate-limit": "^7.1.5",
-      "express-validator": "^7.0.1",
-      "helmet": "^7.1.0",
-      "mongoose": "^6.0.12",
-      "sanitize-html": "^2.11.0",
-      "winston": "^3.11.0"
+        "body-parser": "^1.19.0",
+        "cors": "^2.8.5",
+        "dotenv": "^16.3.1",
+        "express": "^4.17.1",
+        "express-rate-limit": "^7.1.5",
+        "express-validator": "^7.0.1",
+        "helmet": "^7.1.0",
+        "mongoose": "^6.0.12",
+        "sanitize-html": "^2.11.0",
+        "winston": "^3.11.0"
     },
     "devDependencies": {
-      "concurrently": "^6.3.0",
-      "nodemon": "^2.0.14"
+        "concurrently": "^6.3.0",
+        "cross-env": "^7.0.3",
+        "nodemon": "^2.0.14"
     },
     "engines": {
-      "node": ">=14.0.0"
+        "node": ">=14.0.0"
     }
-  }
+}

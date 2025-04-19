@@ -4,7 +4,9 @@ import axios from 'axios';
 import { format } from 'date-fns';
 import { nb } from 'date-fns/locale';
 
-const API_URL = 'http://localhost:5000/api';
+// ---- FJERN DENNE LINJEN ----
+// const API_URL = 'http://localhost:5000/api';
+// ---------------------------
 
 const ActivityLogsPage = () => {
   const [logs, setLogs] = useState([]);
@@ -23,14 +25,18 @@ const ActivityLogsPage = () => {
   useEffect(() => {
     const fetchCars = async () => {
       try {
-        const response = await axios.get(`${API_URL}/cars`);
+        // ---- ENDRE DENNE LINJEN ----
+        // const response = await axios.get(`${API_URL}/cars`);
+        const response = await axios.get('/api/cars'); // Bruk relativ sti
+        // ---------------------------
         setCars(response.data);
       } catch (err) {
         console.error('Error fetching cars:', err);
-        setError('Feil ved henting av biler. Vennligst prøv igjen senere.');
+        // Behøver ikke sette error her, da den andre useEffect vil prøve å hente logger uansett
+        // setError('Feil ved henting av biler. Vennligst prøv igjen senere.');
       }
     };
-    
+
     fetchCars();
   }, []);
 
@@ -39,7 +45,7 @@ const ActivityLogsPage = () => {
     const fetchLogs = async () => {
       try {
         setIsLoading(true);
-        
+
         // Build query params
         const params = new URLSearchParams();
         if (filter.carId) params.append('carId', filter.carId);
@@ -47,8 +53,11 @@ const ActivityLogsPage = () => {
         if (filter.endDate) params.append('endDate', filter.endDate);
         if (filter.action) params.append('action', filter.action);
         if (filter.limit) params.append('limit', filter.limit);
-        
-        const response = await axios.get(`${API_URL}/activity-logs?${params}`);
+
+        // ---- ENDRE DENNE LINJEN ----
+        // const response = await axios.get(`${API_URL}/activity-logs?${params}`);
+        const response = await axios.get(`/api/activity-logs?${params}`); // Bruk relativ sti
+        // ---------------------------
         setLogs(response.data);
         setError(null);
       } catch (err) {
@@ -58,7 +67,7 @@ const ActivityLogsPage = () => {
         setIsLoading(false);
       }
     };
-    
+
     fetchLogs();
   }, [filter]);
 
@@ -77,9 +86,9 @@ const ActivityLogsPage = () => {
   const getActionText = (action) => {
     switch (action) {
       case 'driver_assigned':
-        return 'Sjåfør tildelt';
+        return 'Ansatt tildelt'; // Endret fra 'Sjåfør' for konsistens
       case 'driver_removed':
-        return 'Sjåfør fjernet';
+        return 'Ansatt fjernet'; // Endret fra 'Sjåfør' for konsistens
       case 'maintenance_set':
         return 'Satt til vedlikehold';
       case 'maintenance_cleared':
@@ -95,21 +104,22 @@ const ActivityLogsPage = () => {
     }
   };
 
+  // (getCarDetails funksjonen er ikke brukt i render, men er grei å ha hvis du trenger den senere)
   // Find car details by id
-  const getCarDetails = (carId) => {
-    const car = cars.find(c => c._id === carId);
-    if (!car) return { carNumber: 'Ukjent', registrationNumber: 'Ukjent' };
-    return { carNumber: car.carNumber, registrationNumber: car.registrationNumber };
-  };
+  // const getCarDetails = (carId) => {
+  //   const car = cars.find(c => c._id === carId);
+  //   if (!car) return { carNumber: 'Ukjent', registrationNumber: 'Ukjent' };
+  //   return { carNumber: car.carNumber, registrationNumber: car.registrationNumber };
+  // };
 
   return (
     <div className="page-transition">
       <h2>Aktivitetslogg</h2>
-      
+
       <div className="filter-container" style={{ marginBottom: '20px' }}>
         <div className="quick-actions" style={{ marginBottom: '15px' }}>
-          <button 
-            className="btn btn-info" 
+          <button
+            className="btn btn-info"
             onClick={() => {
               // Build query params for export
               const params = new URLSearchParams();
@@ -117,15 +127,18 @@ const ActivityLogsPage = () => {
               if (filter.startDate) params.append('startDate', filter.startDate);
               if (filter.endDate) params.append('endDate', filter.endDate);
               if (filter.action) params.append('action', filter.action);
-              
-              // Open export URL in new window/tab
-              window.open(`${API_URL}/activity-logs/export?${params}`, '_blank');
+
+              // ---- ENDRE DENNE LINJEN ----
+              // window.open(`${API_URL}/activity-logs/export?${params}`, '_blank');
+              window.open(`/api/activity-logs/export?${params}`, '_blank'); // Bruk relativ sti
+              // ---------------------------
             }}
           >
             Eksporter til CSV
           </button>
         </div>
-      
+
+        {/* Filter controls - ingen endringer her */}
         <div className="filter-row" style={{ display: 'flex', gap: '15px', marginBottom: '10px' }}>
           <div className="filter-item" style={{ flex: 1 }}>
             <label htmlFor="carId">Bil:</label>
@@ -145,7 +158,7 @@ const ActivityLogsPage = () => {
               ))}
             </select>
           </div>
-          
+
           <div className="filter-item" style={{ flex: 1 }}>
             <label htmlFor="action">Handling:</label>
             <select
@@ -167,7 +180,7 @@ const ActivityLogsPage = () => {
             </select>
           </div>
         </div>
-        
+
         <div className="filter-row" style={{ display: 'flex', gap: '15px', marginBottom: '10px' }}>
           <div className="filter-item" style={{ flex: 1 }}>
             <label htmlFor="startDate">Fra dato:</label>
@@ -181,7 +194,7 @@ const ActivityLogsPage = () => {
               style={{ width: '100%' }}
             />
           </div>
-          
+
           <div className="filter-item" style={{ flex: 1 }}>
             <label htmlFor="endDate">Til dato:</label>
             <input
@@ -194,7 +207,7 @@ const ActivityLogsPage = () => {
               style={{ width: '100%' }}
             />
           </div>
-          
+
           <div className="filter-item" style={{ flex: 1 }}>
             <label htmlFor="limit">Maks antall:</label>
             <select
@@ -213,7 +226,8 @@ const ActivityLogsPage = () => {
           </div>
         </div>
       </div>
-      
+
+      {/* Tabellvisning - ingen endringer her */}
       {isLoading ? (
         <div className="loading">Laster aktivitetslogg...</div>
       ) : error ? (
