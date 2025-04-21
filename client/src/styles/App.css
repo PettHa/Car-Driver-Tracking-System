@@ -186,6 +186,7 @@
   
   .btn-info {
     background: linear-gradient(45deg, #3498db, #2980b9);
+    right: 0px;
   }
   
   .save-btn {

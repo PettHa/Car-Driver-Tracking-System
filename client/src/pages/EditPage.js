@@ -2,47 +2,42 @@
 import React, { useState } from 'react';
 import CarRow from '../components/CarRow';
 
-const EditPage = ({ cars, saveDriver, openMaintenancePopup }) => {
+// Motta isAuthenticated som prop
+const EditPage = ({ cars, saveDriver, openMaintenancePopup, isAuthenticated }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [savingStatus, setSavingStatus] = useState({});
 
-  // Filter cars based on search term
-  const filteredCars = cars.filter(car => {
-    const searchLower = searchTerm.toLowerCase();
-    return (
-      car.carNumber.toString().includes(searchLower) ||
-      car.registrationNumber.toLowerCase().includes(searchLower) ||
-      car.phoneNumber.includes(searchLower) ||
-      (car.driver && car.driver.toLowerCase().includes(searchLower))
-    );
-  });
+  // Filter cars based on search term (kun relevant hvis søk er aktivt)
+  const filteredCars = isAuthenticated // <-- Sjekk auth her også for filtrering
+    ? cars.filter(car => {
+        const searchLower = searchTerm.toLowerCase();
+        return (
+          car.carNumber.toString().includes(searchLower) ||
+          car.registrationNumber.toLowerCase().includes(searchLower) ||
+          car.phoneNumber.includes(searchLower) ||
+          (car.driver && car.driver.toLowerCase().includes(searchLower))
+        );
+      })
+    : cars; // <-- Hvis ikke autentisert, vis alle biler (ingen filtrering)
 
-  // Handle saving driver info
+  // Handle saving driver info (denne skal fortsatt fungere uansett auth på denne siden)
   const handleSaveDriver = async (carId, driver, note) => {
     setSavingStatus(prev => ({ ...prev, [carId]: 'saving' }));
-    
     try {
       const success = await saveDriver(carId, driver, note);
-      
       if (success) {
         setSavingStatus(prev => ({ ...prev, [carId]: 'success' }));
-        
-        // Reset after 2 seconds
         setTimeout(() => {
           setSavingStatus(prev => ({ ...prev, [carId]: null }));
         }, 2000);
       } else {
         setSavingStatus(prev => ({ ...prev, [carId]: 'error' }));
-        
-        // Reset after 3 seconds
         setTimeout(() => {
           setSavingStatus(prev => ({ ...prev, [carId]: null }));
         }, 3000);
       }
     } catch (error) {
       setSavingStatus(prev => ({ ...prev, [carId]: 'error' }));
-      
-      // Reset after 3 seconds
       setTimeout(() => {
         setSavingStatus(prev => ({ ...prev, [carId]: null }));
       }, 3000);
@@ -51,27 +46,32 @@ const EditPage = ({ cars, saveDriver, openMaintenancePopup }) => {
 
   return (
     <div className="page-transition">
-      <h2>Registrer/Endre Ansatt for Bil</h2>
-      
-      <div className="search-container">
-        <input 
-          type="text" 
-          className="search-input" 
-          placeholder="Søk etter bil eller ansatt..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-      </div>
-      
-      <div className="quick-actions">
-        <button 
-          className="btn btn-warning" 
-          onClick={openMaintenancePopup}
-        >
-          Sett til Vedlikehold
-        </button>
-      </div>
-      
+
+      {/* Vis søkefelt KUN hvis autentisert */}
+      {isAuthenticated && (
+        <div className="search-container">
+          <input
+            type="text"
+            className="search-input"
+            placeholder="Søk etter bil eller ansatt..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+      )}
+
+      {/* Vis 'Sett til Vedlikehold'-knapp KUN hvis autentisert */}
+      {isAuthenticated && (
+        <div className="quick-actions">
+          <button
+            className="btn btn-warning"
+            onClick={openMaintenancePopup} // openMaintenancePopup fra App.js sjekker allerede auth før den åpner
+          >
+            Sett til Vedlikehold
+          </button>
+        </div>
+      )}
+
       <table>
         <thead>
           <tr>
@@ -88,18 +88,18 @@ const EditPage = ({ cars, saveDriver, openMaintenancePopup }) => {
         <tbody>
           {filteredCars.length > 0 ? (
             filteredCars.map(car => (
-              <CarRow 
-                key={car._id} 
-                car={car} 
+              <CarRow
+                key={car._id}
+                car={car}
                 onSave={handleSaveDriver}
                 savingStatus={savingStatus[car._id]}
-                editable={true}
+                editable={true} // Edit er alltid mulig på denne siden
               />
             ))
           ) : (
             <tr>
               <td colSpan="8" className="empty-state" style={{ textAlign: 'center' }}>
-                Ingen biler funnet
+                {isAuthenticated && searchTerm ? 'Ingen biler funnet med søketerm' : 'Ingen biler tilgjengelig'}
               </td>
             </tr>
           )}

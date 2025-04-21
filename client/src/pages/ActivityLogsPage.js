@@ -114,31 +114,11 @@ const ActivityLogsPage = () => {
 
   return (
     <div className="page-transition">
-      <h2>Aktivitetslogg</h2>
 
       <div className="filter-container" style={{ marginBottom: '20px' }}>
-        <div className="quick-actions" style={{ marginBottom: '15px' }}>
-          <button
-            className="btn btn-info"
-            onClick={() => {
-              // Build query params for export
-              const params = new URLSearchParams();
-              if (filter.carId) params.append('carId', filter.carId);
-              if (filter.startDate) params.append('startDate', filter.startDate);
-              if (filter.endDate) params.append('endDate', filter.endDate);
-              if (filter.action) params.append('action', filter.action);
+        
 
-              // ---- ENDRE DENNE LINJEN ----
-              // window.open(`${API_URL}/activity-logs/export?${params}`, '_blank');
-              window.open(`/api/activity-logs/export?${params}`, '_blank'); // Bruk relativ sti
-              // ---------------------------
-            }}
-          >
-            Eksporter til CSV
-          </button>
-        </div>
-
-        {/* Filter controls - ingen endringer her */}
+        {/* Filter controls */}
         <div className="filter-row" style={{ display: 'flex', gap: '15px', marginBottom: '10px' }}>
           <div className="filter-item" style={{ flex: 1 }}>
             <label htmlFor="carId">Bil:</label>
@@ -225,9 +205,25 @@ const ActivityLogsPage = () => {
             </select>
           </div>
         </div>
+        <div className="quick-actions" style={{ marginBottom: '15px' }}>
+          <button
+            className="btn btn-info"
+            onClick={() => {
+              // Build query params for export
+              const params = new URLSearchParams();
+              if (filter.carId) params.append('carId', filter.carId);
+              if (filter.startDate) params.append('startDate', filter.startDate);
+              if (filter.endDate) params.append('endDate', filter.endDate);
+              if (filter.action) params.append('action', filter.action);
+              window.open(`/api/activity-logs/export?${params}`, '_blank');
+            }}
+          >
+            Eksporter til CSV
+          </button>
+        </div>
       </div>
 
-      {/* Tabellvisning - ingen endringer her */}
+      {/* Tabellvisning */}
       {isLoading ? (
         <div className="loading">Laster aktivitetslogg...</div>
       ) : error ? (

@@ -114,7 +114,6 @@ const ViewPage = ({ cars, openEndAllTripsPopup, tvMode: propsTvMode, toggleTvMod
   if (isTvMode) {
     return (
       <div className="page-transition tv-view">
-        <h2>Oversikt over Bilbruk</h2>
         <div className="last-updated">
           Sist oppdatert: {new Date().toLocaleTimeString('no')}
         </div>
@@ -156,39 +155,6 @@ const ViewPage = ({ cars, openEndAllTripsPopup, tvMode: propsTvMode, toggleTvMod
   // Normal view with controls
   return (
     <div className="page-transition">
-      <h2>Oversikt over Bilbruk</h2>
-      
-      <div className="search-container">
-        <input 
-          type="text" 
-          className="search-input" 
-          placeholder="Søk etter bil, ansatt eller merknad..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-      </div>
-      
-      <div className="quick-actions">
-        <button 
-          className="btn btn-danger" 
-          onClick={openEndAllTripsPopup}
-          disabled={inUseCars.length === 0}
-        >
-          Avslutt Alle Turer ({inUseCars.length})
-        </button>
-        <button 
-          className="btn btn-info" 
-          onClick={exportData}
-        >
-          Eksporter Data
-        </button>
-        <button 
-          className="btn btn-primary" 
-          onClick={toggleTvMode}
-        >
-          {propsTvMode ? 'Avslutt TV-modus' : 'TV-modus'}
-        </button>
-      </div>
       
       <table>
         <thead>

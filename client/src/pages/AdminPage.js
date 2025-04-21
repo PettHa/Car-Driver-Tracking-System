@@ -90,7 +90,6 @@ const AdminPage = ({ cars, saveCar }) => {
 
   return (
     <div className="page-transition">
-      <h2>Admin - Rediger Bilnummer og Registreringsnummer</h2>
       
       <table>
         <thead>
