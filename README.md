@@ -4,7 +4,7 @@ En webapplikasjon for å administrere kjøretøy og ansatte i trygghetsalarmtjen
 
 ## Prosjektstruktur
 
-```
+```text
 bilregistrering/
 ├── client/                  # React frontend
 │   ├── public/              # Statiske filer
@@ -51,7 +51,6 @@ bilregistrering/
 ## Oppsett
 
 ### Forutsetninger
-
 - Node.js (v14 eller nyere)
 - npm (v6 eller nyere)
 - MongoDB (v4 eller nyere)
@@ -59,61 +58,61 @@ bilregistrering/
 ### Installasjon
 
 1. Klon prosjektet:
-   ```
-   git clone <repository-url>
-   cd bilregistrering
-   ```
+```bash
+git clone <repository-url>
+cd bilregistrering
+```
 
 2. Installer backend-avhengigheter:
-   ```
-   npm install
-   ```
+```bash
+npm install
+```
 
 3. Installer frontend-avhengigheter:
-   ```
-   npm run install-client
-   ```
+```bash
+npm run install-client
+```
 
-4. Opprett en `.env`-fil i rotkatalogen med følgende variabler:
-   ```
-   PORT=5000
-   MONGO_URI=mongodb://localhost:27017/bilregister
-   ```
+4. Opprett en .env-fil i rotkatalogen med følgende variabler:
+```env
+PORT=5000
+MONGO_URI=mongodb://localhost:27017/bilregister
+# Legg til andre nødvendige variabler som DATA_SIGNING_SECRET etc.
+```
 
 ### Kjøring i utviklingsmiljø
 
-1. Start backend og frontend samtidig:
-   ```
-   npm run dev-full
-   ```
+Start backend og frontend samtidig:
+```bash
+npm run dev-full
+```
 
-2. Eller start dem separat:
-   ```
-   # Start backend
-   npm run dev
-   
-   # I en annen terminal, start frontend
-   npm run client
-   ```
+Eller start dem separat:
+```bash
+# Start backend
+npm run dev
 
-3. Åpne nettleseren på `http://localhost:3000`
+# I en annen terminal, start frontend
+npm run client
+```
+
+Åpne nettleseren på http://localhost:3000
 
 ### Kjøring i produksjonsmiljø
 
 1. Bygg React-appen:
-   ```
-   npm run build-client
-   ```
+```bash
+npm run build-client
+```
 
 2. Start serveren:
-   ```
-   npm start
-   ```
+```bash
+npm start
+```
 
-3. Åpne nettleseren på `http://localhost:5000`
+Åpne nettleseren på http://localhost:5000 (eller den konfigurerte porten)
 
 ## Funksjonalitet
-
 - **Registrer/Endre**: Administrer ansatte for biler
 - **Vis Oversikt**: Se status for alle biler
 - **Admin**: Legg til og rediger bilinformasjon
@@ -122,7 +121,6 @@ bilregistrering/
 - **Kiosk-modus**: Dedikert visning på Raspberry Pi eller andre skjermer
 
 ## API-endepunkter
-
 - `GET /api/cars` - Hent alle biler
 - `GET /api/cars/:id` - Hent en spesifikk bil
 - `POST /api/cars` - Opprett en ny bil
@@ -137,24 +135,24 @@ bilregistrering/
 
 ## Databasemodell
 
-```
+```javascript
 Car {
   carNumber: Number,
   registrationNumber: String,
   phoneNumber: String,
-  driver: String,          # Ansattens navn
+  driver: String,          // Ansattens navn
   note: String,
   registrationTime: Date,
-  status: String (available, inuse, maintenance)
+  status: String ('available', 'inuse', 'maintenance')
 }
 
 ActivityLog {
-  action: String (driver_assigned, driver_removed, maintenance_set, maintenance_cleared, car_added, car_updated, car_deleted),
+  action: String ('driver_assigned', 'driver_removed', 'maintenance_set', 'maintenance_cleared', 'car_added', 'car_updated', 'car_deleted'),
   carId: ObjectId,
   carNumber: Number,
   registrationNumber: String,
-  previousDriver: String,  # Tidligere ansatt
-  newDriver: String,       # Ny ansatt
+  previousDriver: String,  // Tidligere ansatt
+  newDriver: String,       // Ny ansatt
   note: String,
   userId: String,
   timestamp: Date,
@@ -164,37 +162,31 @@ ActivityLog {
 ```
 
 ## Kiosk-modus
+Prosjektet inkluderer en kiosk-løsning for å vise biloversikten på dedikerte skjermer eller Raspberry Pi. For detaljert oppsett, se `kiosk/README.md`.
 
-Prosjektet inkluderer en kiosk-løsning for å vise biloversikten på dedikerte skjermer eller Raspberry Pi. For detaljert oppsett, se [kiosk/README.md](kiosk/README.md).
-
-### Hovedfunksjoner for kiosk-modus:
-
+Hovedfunksjoner for kiosk-modus:
 - Automatisk oppstart ved systemstart
 - Fullskjermsvisning av biloversikten
-- Automatisk oppdatering hvert minutt
+- Automatisk oppdatering av data hvert minutt
 - Deaktivering av skjermsparer og strømstyringsfunksjoner
 - Støtte for både Raspberry Pi og Windows
 
 ## Tastatursnarveier
-
-- `E` - Gå til Registrer/Endre
-- `V` - Gå til Vis Oversikt
-- `A` - Gå til Admin
-- `L` - Gå til Aktivitetslogg
-- `T` - Slå på/av TV-modus
-- `Ctrl+K` - Start/avslutt kiosk-modus
-- `S` - Fokusér søkefeltet
-- `Esc` - Lukk popup eller avslutt TV-modus
+- **E** - Gå til Registrer/Endre
+- **V** - Gå til Vis Oversikt
+- **A** - Gå til Admin
+- **L** - Gå til Aktivitetslogg
+- **T** - Slå på/av TV-modus
+- **S** - Fokusér søkefeltet
+- **Esc** - Lukk popup eller avslutt TV-modus
 
 ## Sikkerhet
-
 Systemet inkluderer flere sikkerhetsfunksjoner:
 - Input-validering og sanering
 - Rate limiting for å forhindre overbelastning
 - Logging av IP-adresser og brukeragenter for sporbarhet
-- HMAC-basert dataintegritetssjekk
+- HMAC-basert dataintegritetssjekk (via server/utils/security.js), med en betinget verifiseringsmekanisme implementert i PUT-ruten for biler (krever at klienten sender signatur og tidsstempel).
 - XSS-beskyttelse gjennom input-sanering
 
 ## Lisens
-
-MIT
+ISC
